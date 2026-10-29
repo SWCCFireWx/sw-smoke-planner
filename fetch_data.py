@@ -1,102 +1,166 @@
 #!/usr/bin/env python3
 """
-SW Smoke Dispersion Planner - data fetcher.
+SW Smoke Dispersion Planner - data builder.
 
-Runs inside GitHub Actions (see .github/workflows/update-data.yml). It downloads:
-  1. GACC boundaries          (NIFC ArcGIS)  -> data/gacc.geojson
-  2. Current fire perimeters  (NIFC WFIGS)   -> data/perimeters.geojson
-  3. Hourly forecast grid     (Open-Meteo GFS/HRRR) -> data/forecast.json
-and writes data/meta.json with timestamps and status.
+Runs inside GitHub Actions (.github/workflows/update-data.yml) and writes the
+site's data folder:
 
-The web page only ever reads these files from the repository, so nobody has to
-touch ArcGIS or any API by hand. Uses only the Python standard library.
+  manifest.json        forecast run, valid times, grid, field encodings
+  f_<field>.png        one image per field; every forecast hour is a horizontal
+                       band, each pixel holds a 16-bit value (R = high byte,
+                       G = low byte, 65535 = missing)
+  gacc.geojson         NIFC National GACC Boundaries
+  perimeters.geojson   NIFC WFIGS current perimeters (wildfire + prescribed)
+  meta.json            when each source was last fetched and whether it worked
 
-Usage:
-  python fetch_data.py                   # perimeters every run, forecast if older than 5.5 h
-  python fetch_data.py --force-forecast  # always refresh the forecast
+Forecast source: NOAA National Blend of Models (NBM) CONUS "core" GRIB2 files
+from NOAA's open-data bucket on AWS. Only the needed GRIB messages are
+downloaded (HTTP byte ranges from the .idx inventory files). NBM provides the
+fire-weather fields directly: mixing height (MIXHT), transport wind
+(TRWSPD/TRWDIR), 10-m wind, gust, 2-m temperature and RH, 1-hr PoP and QPF.
+
+Requires: numpy, scipy, pygrib, pyproj  (installed by the workflow).
+Usage:   python fetch_data.py --out _site/data
 """
 import argparse
+import concurrent.futures as cf
+import datetime as dt
 import json
 import math
 import os
+import re
+import struct
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
+import zlib
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(ROOT, "data")
+import numpy as np
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 # ---------------------------------------------------------------------------
-# Domain: Southwest GACC (AZ, NM, W TX, OK panhandle area) plus the edges of the
-# neighboring GACCs (Southern California, Great Basin, Rocky Mountain, Southern
-# Area) so the map is not cut off at the SW boundary.
+# Domain: Southwest GACC (AZ/NM/W TX) plus the edges of the neighboring GACCs.
 # ---------------------------------------------------------------------------
 BBOX = {"west": -120.5, "south": 29.5, "east": -100.0, "north": 41.5}
-GRID = {"west": -119.25, "east": -101.25, "south": 30.75, "north": 40.5, "step": 0.75}
+STEP = 0.1                       # output grid spacing in degrees (~10 km)
+NEIGHBORS = 12                   # NBM 2.5-km points averaged into each output cell
+
+BUCKET = "https://noaa-nbm-grib2-pds.s3.amazonaws.com"
+FHOURS = list(range(1, 49)) + list(range(51, 97, 3))   # hourly to 48 h, 3-hourly to 96 h
 
 NIFC = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services"
 GACC_URL = NIFC + "/DMP_NationalGACCBoundaries_Public/FeatureServer/0/query"
 PERIM_URL = NIFC + "/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query"
 
-OM_URL = "https://api.open-meteo.com/v1/gfs"   # GFS + HRRR blend (gfs_seamless)
-LEVELS = [850, 800, 700, 600, 500]              # hPa levels used for transport wind
-FORECAST_HOURS = 96
-BATCH = 35              # locations per Open-Meteo request
-BATCH_PAUSE = 12        # seconds between requests (stay well under free-tier limits)
-
 UA = "SW-Smoke-Dispersion-Planner (GitHub Actions; non-commercial)"
 M_TO_FT = 3.28084
-KT_TO_MPH = 1.15078
+MS_TO_KT = 1.943844
+MS_TO_MPH = 2.236936
+MISSING = 65535
+
+# Output fields: name -> (scale, offset, units). Stored value = round((v - offset) / scale).
+FIELDS = {
+    "mh":  (10.0,  0.0,   "ft AGL"),      # mixing height
+    "tw":  (0.1,   0.0,   "kt"),          # transport wind speed
+    "twd": (1.0,   0.0,   "deg"),         # transport wind direction (from)
+    "vi":  (100.0, 0.0,   "kt-ft"),       # ventilation rate
+    "pop": (1.0,   0.0,   "%"),           # chance of precip (>0.01 in) in the window ending this hour
+    "qpf": (0.001, 0.0,   "in"),          # precip amount in the window ending this hour
+    "ws":  (0.1,   0.0,   "mph"),         # 10-m wind speed
+    "wd":  (1.0,   0.0,   "deg"),         # 10-m wind direction (from)
+    "wg":  (0.1,   0.0,   "mph"),         # 10-m gust
+    "t":   (0.1,  -80.0,  "F"),           # 2-m temperature
+    "rh":  (1.0,   0.0,   "%"),           # 2-m relative humidity
+}
 
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
 # ---------------------------------------------------------------------------
-def http_get_json(url, params, retries=5):
-    full = url + "?" + urllib.parse.urlencode(params)
+def http_get(url, params=None, headers=None, retries=5, timeout=120):
+    full = url + ("?" + urllib.parse.urlencode(params) if params else "")
     last = None
     for attempt in range(1, retries + 1):
         try:
-            req = urllib.request.Request(full, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=120) as r:
-                return json.loads(r.read().decode("utf-8"))
+            h = {"User-Agent": UA}
+            h.update(headers or {})
+            req = urllib.request.Request(full, headers=h)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
         except urllib.error.HTTPError as e:
             last = e
-            body = ""
-            try:
-                body = e.read().decode("utf-8", "ignore")[:300]
-            except Exception:
-                pass
-            print(f"  HTTP {e.code} (attempt {attempt}/{retries}) {body}", flush=True)
+            if e.code == 404:
+                raise
             if e.code in (429, 500, 502, 503, 504):
-                time.sleep(min(90, 15 * attempt))
+                time.sleep(min(60, 5 * attempt))
                 continue
             raise
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             last = e
-            print(f"  network error (attempt {attempt}/{retries}): {e}", flush=True)
-            time.sleep(10 * attempt)
+            time.sleep(5 * attempt)
     raise RuntimeError(f"giving up on {url}: {last}")
 
 
+def http_get_json(url, params):
+    return json.loads(http_get(url, params).decode("utf-8"))
+
+
+def exists(url):
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Small file helpers
+# ---------------------------------------------------------------------------
+def write_json(out, name, obj):
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, name)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, separators=(",", ":"))
+    print(f"  wrote {name} ({os.path.getsize(path) / 1024:.0f} KB)")
+
+
+def write_png16(path, arr):
+    """Write a uint16 2-D array as an 8-bit RGB PNG: R = high byte, G = low byte, B = 0."""
+    h, w = arr.shape
+    rgb = np.zeros((h, w, 3), dtype=np.uint8)
+    rgb[..., 0] = (arr >> 8).astype(np.uint8)
+    rgb[..., 1] = (arr & 0xFF).astype(np.uint8)
+    raw = b"".join(b"\x00" + rgb[r].tobytes() for r in range(h))
+
+    def chunk(tag, data):
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(raw, 9))
+    png += chunk(b"IEND", b"")
+    with open(path, "wb") as f:
+        f.write(png)
+
+
+# ---------------------------------------------------------------------------
+# ArcGIS (GACC boundaries, WFIGS perimeters)
+# ---------------------------------------------------------------------------
 def arcgis_geojson(url, extra):
-    """Query an ArcGIS FeatureServer layer inside BBOX, following pagination."""
     feats, offset = [], 0
     while True:
         params = {
-            "where": "1=1",
-            "outFields": "*",
-            "returnGeometry": "true",
+            "where": "1=1", "outFields": "*", "returnGeometry": "true",
             "geometry": f"{BBOX['west']},{BBOX['south']},{BBOX['east']},{BBOX['north']}",
-            "geometryType": "esriGeometryEnvelope",
-            "inSR": "4326",
-            "spatialRel": "esriSpatialRelIntersects",
-            "outSR": "4326",
-            "f": "geojson",
-            "resultOffset": offset,
-            "resultRecordCount": 1000,
+            "geometryType": "esriGeometryEnvelope", "inSR": "4326",
+            "spatialRel": "esriSpatialRelIntersects", "outSR": "4326", "f": "geojson",
+            "resultOffset": offset, "resultRecordCount": 1000,
         }
         params.update(extra)
         j = http_get_json(url, params)
@@ -108,14 +172,12 @@ def arcgis_geojson(url, extra):
         if not exceeded or not batch:
             break
         offset += len(batch)
-    return {"type": "FeatureCollection", "features": feats}
+    return feats
 
 
 def round_coords(geom, nd):
     def r(c):
-        if isinstance(c, (int, float)):
-            return round(c, nd)
-        return [r(x) for x in c]
+        return round(c, nd) if isinstance(c, (int, float)) else [r(x) for x in c]
     if geom and "coordinates" in geom:
         geom["coordinates"] = r(geom["coordinates"])
     return geom
@@ -129,252 +191,323 @@ def pick(props, *names):
     return None
 
 
-def write_json(name, obj):
-    os.makedirs(DATA, exist_ok=True)
-    path = os.path.join(DATA, name)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(obj, f, separators=(",", ":"))
-    os.replace(tmp, path)
-    print(f"  wrote {path} ({os.path.getsize(path)/1024:.0f} KB)")
-
-
-def read_json(name):
-    try:
-        with open(os.path.join(DATA, name), encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-# ---------------------------------------------------------------------------
-# 1. GACC boundaries
-# ---------------------------------------------------------------------------
-def fetch_gaccs():
+def fetch_gaccs(out):
     print("Fetching GACC boundaries ...", flush=True)
-    fc = arcgis_geojson(GACC_URL, {
-        "outFields": "GACCName,GACCAbbreviation,GACCUnitID",
-        "maxAllowableOffset": "0.01",
-        "geometryPrecision": "3",
-    })
-    out = []
-    for f in fc["features"]:
+    feats = arcgis_geojson(GACC_URL, {"outFields": "GACCName,GACCAbbreviation,GACCUnitID",
+                                      "maxAllowableOffset": "0.01", "geometryPrecision": "3"})
+    res = []
+    for f in feats:
         p = f.get("properties") or {}
         name = p.get("GACCName") or ""
-        out.append({
-            "type": "Feature",
-            "geometry": round_coords(f.get("geometry"), 3),
-            "properties": {
-                "name": name,
-                "abbr": p.get("GACCAbbreviation") or p.get("GACCUnitID") or "",
-                "isSW": "southwest" in name.lower(),
-            },
-        })
-    if not out:
+        res.append({"type": "Feature", "geometry": round_coords(f.get("geometry"), 3),
+                    "properties": {"name": name, "abbr": p.get("GACCAbbreviation") or p.get("GACCUnitID") or "",
+                                   "isSW": "southwest" in name.lower()}})
+    if not res:
         raise RuntimeError("no GACC features returned")
-    print(f"  {len(out)} GACCs: " + ", ".join(sorted(x['properties']['name'] for x in out)))
-    write_json("gacc.geojson", {"type": "FeatureCollection", "features": out})
-    return len(out)
+    write_json(out, "gacc.geojson", {"type": "FeatureCollection", "features": res})
+    return len(res)
 
 
-# ---------------------------------------------------------------------------
-# 2. Current WFIGS perimeters (wildfire + prescribed fire)
-# ---------------------------------------------------------------------------
-def fetch_perimeters():
+def fetch_perimeters(out):
     print("Fetching WFIGS current perimeters ...", flush=True)
-    fc = arcgis_geojson(PERIM_URL, {"maxAllowableOffset": "0.0005", "geometryPrecision": "5"})
-    out = []
-    for f in fc["features"]:
+    feats = arcgis_geojson(PERIM_URL, {"maxAllowableOffset": "0.0005", "geometryPrecision": "5"})
+    res = []
+    for f in feats:
         p = f.get("properties") or {}
         if not f.get("geometry"):
             continue
         typ = (pick(p, "attr_IncidentTypeCategory", "IncidentTypeCategory", "poly_IncidentTypeCategory") or "").upper()
-        out.append({
-            "type": "Feature",
-            "geometry": round_coords(f["geometry"], 5),
-            "properties": {
-                "name": pick(p, "poly_IncidentName", "attr_IncidentName", "IncidentName") or "Unnamed",
-                "type": typ or "WF",
-                "acres": pick(p, "poly_GISAcres", "attr_IncidentSize", "GISAcres"),
-                "contained": pick(p, "attr_PercentContained", "PercentContained"),
-                "discovered": pick(p, "attr_FireDiscoveryDateTime", "FireDiscoveryDateTime"),
-                "updated": pick(p, "poly_DateCurrent", "poly_PolygonDateTime", "attr_ModifiedOnDateTime_dt"),
-                "state": pick(p, "attr_POOState", "POOState"),
-                "id": pick(p, "attr_UniqueFireIdentifier", "UniqueFireIdentifier", "poly_IRWINID"),
-            },
-        })
-    n_rx = sum(1 for x in out if x["properties"]["type"] == "RX")
-    print(f"  {len(out)} perimeters ({n_rx} prescribed)")
-    write_json("perimeters.geojson", {"type": "FeatureCollection", "features": out})
-    return len(out)
+        res.append({"type": "Feature", "geometry": round_coords(f["geometry"], 5), "properties": {
+            "name": pick(p, "poly_IncidentName", "attr_IncidentName", "IncidentName") or "Unnamed",
+            "type": typ or "WF",
+            "acres": pick(p, "poly_GISAcres", "attr_IncidentSize", "GISAcres"),
+            "contained": pick(p, "attr_PercentContained", "PercentContained"),
+            "discovered": pick(p, "attr_FireDiscoveryDateTime", "FireDiscoveryDateTime"),
+            "updated": pick(p, "poly_DateCurrent", "poly_PolygonDateTime", "attr_ModifiedOnDateTime_dt"),
+            "state": pick(p, "attr_POOState", "POOState"),
+            "id": pick(p, "attr_UniqueFireIdentifier", "UniqueFireIdentifier", "poly_IRWINID"),
+        }})
+    print(f"  {len(res)} perimeters ({sum(1 for x in res if x['properties']['type'] == 'RX')} prescribed)")
+    write_json(out, "perimeters.geojson", {"type": "FeatureCollection", "features": res})
+    return len(res)
 
 
 # ---------------------------------------------------------------------------
-# 3. Forecast grid (Open-Meteo GFS/HRRR)
+# NBM: inventory parsing and message selection
 # ---------------------------------------------------------------------------
-def grid_points():
-    g = GRID
-    nlat = int(round((g["north"] - g["south"]) / g["step"])) + 1
-    nlon = int(round((g["east"] - g["west"]) / g["step"])) + 1
-    pts = []
-    for i in range(nlat):
-        for j in range(nlon):
-            pts.append((round(g["south"] + i * g["step"], 4), round(g["west"] + j * g["step"], 4)))
-    return pts
+def nbm_url(cycle, fh):
+    return f"{BUCKET}/blend.{cycle:%Y%m%d}/{cycle:%H}/core/blend.t{cycle:%H}z.core.f{fh:03d}.co.grib2"
 
 
-def hourly_vars():
-    v = ["temperature_2m", "relative_humidity_2m", "precipitation_probability", "precipitation",
-         "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "boundary_layer_height"]
-    for L in LEVELS:
-        v += [f"wind_speed_{L}hPa", f"wind_direction_{L}hPa", f"geopotential_height_{L}hPa"]
-    return v
+def parse_idx(text):
+    """Return a list of (start, end_or_None, line) byte ranges from a GRIB .idx file."""
+    rows = []
+    for line in text.splitlines():
+        parts = line.split(":")
+        if len(parts) > 2 and parts[1].isdigit():
+            rows.append((int(parts[1]), line))
+    out = []
+    for i, (start, line) in enumerate(rows):
+        end = rows[i + 1][0] - 1 if i + 1 < len(rows) else None
+        out.append((start, end, line))
+    return out
 
 
-def _r(x, nd=0):
-    if x is None or (isinstance(x, float) and math.isnan(x)):
-        return None
-    return int(round(x)) if nd == 0 else round(x, nd)
+ACC_RE = re.compile(r":APCP:surface:(\d+)-(\d+) hour acc fcst:")
 
 
-def process_location(loc):
-    """Compute mixing height, transport wind and ventilation rate for one point."""
-    h = loc["hourly"]
-    elev = loc.get("elevation") or 0.0
-    n = len(h["time"])
-    out = {k: [] for k in ("mh", "tw", "twd", "vi", "pop", "qpf", "ws", "wd", "wg", "t", "rh")}
-    for i in range(n):
-        blh = h["boundary_layer_height"][i]
-        ws10 = h["wind_speed_10m"][i]           # knots (requested in kn)
-        wd10 = h["wind_direction_10m"][i]
-        gust = h["wind_gusts_10m"][i]
-
-        mh_ft = tw = twd = vi = None
-        if blh is not None and ws10 is not None and wd10 is not None:
-            top = elev + max(blh, 0.0)
-            speeds = [ws10]
-            us = [-ws10 * math.sin(math.radians(wd10))]
-            vs = [-ws10 * math.cos(math.radians(wd10))]
-            # Average every pressure level that sits inside the mixed layer.
-            for L in LEVELS:
-                z = h[f"geopotential_height_{L}hPa"][i]
-                s = h[f"wind_speed_{L}hPa"][i]
-                d = h[f"wind_direction_{L}hPa"][i]
-                if None in (z, s, d):
-                    continue
-                if elev + 10 < z <= top:
-                    speeds.append(s)
-                    us.append(-s * math.sin(math.radians(d)))
-                    vs.append(-s * math.cos(math.radians(d)))
-            tw = sum(speeds) / len(speeds)                      # scalar mean speed (kt)
-            u, v = sum(us) / len(us), sum(vs) / len(vs)
-            twd = (math.degrees(math.atan2(-u, -v)) + 360) % 360  # direction wind is FROM
-            mh_ft = max(blh, 0.0) * M_TO_FT
-            vi = mh_ft * tw                                     # knot-feet (NM smoke mgmt)
-
-        out["mh"].append(None if mh_ft is None else int(round(mh_ft / 10.0) * 10))
-        out["tw"].append(_r(tw, 1))
-        out["twd"].append(_r(twd))
-        out["vi"].append(None if vi is None else int(round(vi / 100.0) * 100))
-        out["pop"].append(_r(h["precipitation_probability"][i]))
-        out["qpf"].append(_r(h["precipitation"][i], 2))
-        out["ws"].append(None if ws10 is None else _r(ws10 * KT_TO_MPH))
-        out["wd"].append(_r(wd10))
-        out["wg"].append(None if gust is None else _r(gust * KT_TO_MPH))
-        out["t"].append(_r(h["temperature_2m"][i]))
-        out["rh"].append(_r(h["relative_humidity_2m"][i]))
-    return out, elev
+def _plain(line):
+    return "std dev" not in line and "prob" not in line
 
 
-def fetch_forecast():
-    pts = grid_points()
-    print(f"Fetching Open-Meteo GFS/HRRR forecast for {len(pts)} grid points ...", flush=True)
-    variables = hourly_vars()
-    points, times = [], None
-    for b in range(0, len(pts), BATCH):
-        chunk = pts[b:b + BATCH]
-        params = {
-            "latitude": ",".join(str(p[0]) for p in chunk),
-            "longitude": ",".join(str(p[1]) for p in chunk),
-            "hourly": ",".join(variables),
-            "wind_speed_unit": "kn",
-            "temperature_unit": "fahrenheit",
-            "precipitation_unit": "inch",
-            "timeformat": "unixtime",
-            "timezone": "GMT",
-            "forecast_hours": FORECAST_HOURS,
-        }
-        j = http_get_json(OM_URL, params)
-        locs = j if isinstance(j, list) else [j]
-        if len(locs) != len(chunk):
-            raise RuntimeError(f"expected {len(chunk)} locations, got {len(locs)}")
-        for (lat, lon), loc in zip(chunk, locs):
-            if "hourly" not in loc:
-                raise RuntimeError(f"no hourly data for {lat},{lon}: {str(loc)[:200]}")
-            if times is None:
-                times = loc["hourly"]["time"]
-            series, elev = process_location(loc)
-            points.append({"lat": lat, "lon": lon, "elev": _r(elev), **series})
-        print(f"  {min(b + BATCH, len(pts))}/{len(pts)} points", flush=True)
-        if b + BATCH < len(pts):
-            time.sleep(BATCH_PAUSE)
+def select_messages(idx_rows, fh, prev_fh):
+    """Pick the byte range for each needed NBM field in one forecast file."""
+    want = {
+        "MIXHT": lambda l: ":MIXHT:" in l and _plain(l),
+        "TRWSPD": lambda l: ":TRWSPD:" in l and _plain(l),
+        "TRWDIR": lambda l: ":TRWDIR:" in l and _plain(l),
+        "WIND": lambda l: ":WIND:10 m above ground:" in l and _plain(l),
+        "WDIR": lambda l: ":WDIR:10 m above ground:" in l and _plain(l),
+        "GUST": lambda l: ":GUST:10 m above ground:" in l and _plain(l),
+        "TMP": lambda l: ":TMP:2 m above ground:" in l and _plain(l),
+        "RH": lambda l: ":RH:2 m above ground:" in l and _plain(l),
+    }
+    inst = f":{fh} hour fcst:"
+    sel = {}
+    for key, ok in want.items():
+        cands = [(s, e, l) for s, e, l in idx_rows if ok(l)]
+        if cands:   # prefer the instantaneous record valid at this hour
+            exact = [c for c in cands if inst in c[2]]
+            sel[key] = (exact or cands)[0]
 
-    write_json("forecast.json", {
+    gap = fh - prev_fh
+    for key, is_prob in (("POP", True), ("QPF", False)):
+        best = None
+        for s, e, l in idx_rows:
+            m = ACC_RE.search(l)
+            if not m or int(m.group(2)) != fh or "std dev" in l:
+                continue
+            if is_prob != (">0.254" in l):
+                continue
+            if not is_prob and "prob" in l:
+                continue
+            win = int(m.group(2)) - int(m.group(1))
+            score = (0 if win == gap else 1, win)   # exact match to the time step first, then shortest
+            if best is None or score < best[0]:
+                best = (score, (s, e, l), win)
+        if best:
+            sel[key] = best[1]
+            sel[key + "_WIN"] = best[2]
+    return sel
+
+
+def fetch_range(url, start, end):
+    rng = f"bytes={start}-" + ("" if end is None else str(end))
+    return http_get(url, headers={"Range": rng}, timeout=180)
+
+
+def decode_grib(msg, latlons=False):
+    """Decode one GRIB2 message -> (values 2-D float32 with NaN, lats, lons). Replaced in tests."""
+    import pygrib
+    g = pygrib.fromstring(msg)
+    vals = np.ma.filled(np.ma.masked_invalid(g.values).astype(np.float32), np.nan)
+    if latlons:
+        lats, lons = g.latlons()
+        return vals, lats, lons
+    return vals, None, None
+
+
+# ---------------------------------------------------------------------------
+# NBM: regridding to a regular lat/lon grid
+# ---------------------------------------------------------------------------
+class Regridder:
+    def __init__(self, lats, lons):
+        from scipy.spatial import cKDTree
+        lons = np.where(lons > 180, lons - 360, lons)
+        m = 0.4
+        mask = ((lats >= BBOX["south"] - m) & (lats <= BBOX["north"] + m) &
+                (lons >= BBOX["west"] - m) & (lons <= BBOX["east"] + m))
+        self.mask = mask.ravel()
+        self.coslat = math.cos(math.radians((BBOX["south"] + BBOX["north"]) / 2))
+        pts = np.column_stack([lats.ravel()[self.mask], lons.ravel()[self.mask] * self.coslat])
+        self.nx = int(round((BBOX["east"] - BBOX["west"]) / STEP)) + 1
+        self.ny = int(round((BBOX["north"] - BBOX["south"]) / STEP)) + 1
+        glat = BBOX["north"] - np.arange(self.ny) * STEP          # row 0 = north
+        glon = BBOX["west"] + np.arange(self.nx) * STEP
+        LON, LAT = np.meshgrid(glon, glat)
+        tgt = np.column_stack([LAT.ravel(), LON.ravel() * self.coslat])
+        dist, self.idx = cKDTree(pts).query(tgt, k=NEIGHBORS)
+        self.outside = dist[:, 0] > STEP * 1.5                     # beyond the NBM grid
+
+    def scalar(self, vals):
+        v = vals.ravel()[self.mask][self.idx]
+        with np.errstate(all="ignore"):
+            out = np.nanmean(v, axis=1)
+        out[self.outside] = np.nan
+        return out.reshape(self.ny, self.nx)
+
+    def vector(self, speed, direction):
+        """Average wind by u/v components; returns (mean speed, vector-mean direction)."""
+        s = speed.ravel()[self.mask][self.idx]
+        d = np.radians(direction.ravel()[self.mask][self.idx])
+        with np.errstate(all="ignore"):
+            u = np.nanmean(-s * np.sin(d), axis=1)
+            v = np.nanmean(-s * np.cos(d), axis=1)
+            spd = np.nanmean(s, axis=1)
+        dirn = (np.degrees(np.arctan2(-u, -v)) + 360) % 360
+        spd[self.outside] = np.nan
+        dirn[self.outside] = np.nan
+        return spd.reshape(self.ny, self.nx), dirn.reshape(self.ny, self.nx)
+
+
+# ---------------------------------------------------------------------------
+# NBM: main forecast build
+# ---------------------------------------------------------------------------
+def find_cycle(now=None):
+    now = now or dt.datetime.now(dt.timezone.utc).replace(minute=0, second=0, microsecond=0)
+    last = FHOURS[-1]
+    for back in range(1, 13):
+        cyc = now - dt.timedelta(hours=back)
+        if exists(nbm_url(cyc, last) + ".idx") and exists(nbm_url(cyc, FHOURS[0]) + ".idx"):
+            return cyc
+    raise RuntimeError("no complete NBM cycle found in the last 12 hours")
+
+
+def get_idx(cycle, fh):
+    try:
+        return fh, parse_idx(http_get(nbm_url(cycle, fh) + ".idx").decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return fh, None
+        raise
+
+
+def download(cycle, fh, sel):
+    url = nbm_url(cycle, fh)
+    raw = {key: fetch_range(url, s, e) for key, (s, e, _) in
+           ((k, v) for k, v in sel.items() if not k.endswith("_WIN"))}
+    return fh, {"raw": raw, "qwin": sel.get("QPF_WIN"), "popwin": sel.get("POP_WIN")}
+
+
+def fetch_forecast(out):
+    cycle = find_cycle()
+    print(f"Using NBM cycle {cycle:%Y-%m-%d %HZ}", flush=True)
+
+    # 1) Read every inventory so we know which forecast hours really exist.
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
+        idxs = {fh: rows for fh, rows in ex.map(lambda f: get_idx(cycle, f), FHOURS) if rows}
+    if not idxs:
+        raise RuntimeError("no NBM inventories found")
+    hours = sorted(idxs)
+    skipped = [f for f in FHOURS if f not in idxs]
+    if skipped:
+        print(f"  forecast hours not in this run (skipped): {skipped}")
+
+    # 2) Choose messages, matching precip windows to the real spacing between files.
+    sels = {fh: select_messages(idxs[fh], fh, hours[i - 1] if i else 0) for i, fh in enumerate(hours)}
+
+    # 3) Download only those byte ranges, 8 files at a time.
+    files = {}
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
+        for fh, res in ex.map(lambda f: download(cycle, f, sels[f]), hours):
+            files[fh] = res
+    print(f"  downloaded {len(files)} forecast hours", flush=True)
+
+    rg = None
+    grids = {k: [] for k in FIELDS}
+    times, qwin, popwin = [], [], []
+    for fh in hours:
+        raw = files[fh]["raw"]
+        dec = {}
+        for key, msg in raw.items():
+            vals, lats, lons = decode_grib(msg, latlons=rg is None)
+            if rg is None:
+                print("  building regridder ...", flush=True)
+                rg = Regridder(lats, lons)
+            dec[key] = vals
+        if rg is None:
+            continue
+        nan = np.full((rg.ny, rg.nx), np.nan, dtype=np.float32)
+        g = lambda k: rg.scalar(dec[k]) if k in dec else nan
+
+        mh_ft = g("MIXHT") * M_TO_FT
+        if "TRWSPD" in dec and "TRWDIR" in dec:
+            tw_ms, twd = rg.vector(dec["TRWSPD"], dec["TRWDIR"])
+        else:
+            tw_ms, twd = nan, nan
+        tw_kt = tw_ms * MS_TO_KT
+        if "WIND" in dec and "WDIR" in dec:
+            ws_ms, wd = rg.vector(dec["WIND"], dec["WDIR"])
+        else:
+            ws_ms, wd = nan, nan
+
+        grids["mh"].append(mh_ft)
+        grids["tw"].append(tw_kt)
+        grids["twd"].append(twd)
+        grids["vi"].append(mh_ft * tw_kt)                     # knot-feet
+        grids["pop"].append(g("POP"))
+        grids["qpf"].append(g("QPF") / 25.4)                   # mm -> in
+        grids["ws"].append(ws_ms * MS_TO_MPH)
+        grids["wd"].append(wd)
+        grids["wg"].append(g("GUST") * MS_TO_MPH)
+        grids["t"].append((g("TMP") - 273.15) * 9 / 5 + 32)
+        grids["rh"].append(g("RH"))
+        times.append(int((cycle + dt.timedelta(hours=fh)).timestamp()))
+        qwin.append(files[fh]["qwin"])
+        popwin.append(files[fh]["popwin"])
+
+    # Encode each field as a PNG strip (one band per forecast hour).
+    fields_meta = {}
+    for k, (scale, offset, units) in FIELDS.items():
+        stack = np.stack(grids[k])                              # (nt, ny, nx)
+        q = np.round((stack - offset) / scale)
+        q = np.where(np.isfinite(q), np.clip(q, 0, MISSING - 1), MISSING).astype(np.uint16)
+        write_png16(os.path.join(out, f"f_{k}.png"), q.reshape(-1, rg.nx))
+        fields_meta[k] = {"file": f"f_{k}.png", "scale": scale, "offset": offset, "units": units}
+        print(f"  f_{k}.png ({os.path.getsize(os.path.join(out, f'f_{k}.png')) / 1024:.0f} KB)")
+
+    write_json(out, "manifest.json", {
         "generated": int(time.time()),
-        "source": "Open-Meteo GFS API (NOAA GFS + HRRR, gfs_seamless)",
-        "units": {"mh": "ft AGL", "tw": "kt", "vi": "kt-ft", "pop": "%", "qpf": "in/hr",
-                  "ws": "mph (10 m)", "wg": "mph", "t": "F", "rh": "%"},
-        "levels_hPa": LEVELS,
-        "grid": GRID,
+        "source": "NOAA National Blend of Models (NBM) CONUS core",
+        "cycle": cycle.strftime("%Y-%m-%dT%H:00Z"),
+        "cycle_epoch": int(cycle.timestamp()),
         "times": times,
-        "points": points,
+        "qpf_window_h": qwin,
+        "pop_window_h": popwin,
+        "grid": {"west": BBOX["west"], "north": BBOX["north"], "step": STEP, "nx": rg.nx, "ny": rg.ny},
+        "missing": MISSING,
+        "fields": fields_meta,
     })
-    return len(points)
+    return len(times)
 
 
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--force-forecast", action="store_true")
-    ap.add_argument("--forecast-max-age-hours", type=float, default=5.5)
+    ap.add_argument("--out", default="_site/data")
     args = ap.parse_args()
+    out = args.out
+    os.makedirs(out, exist_ok=True)
+    meta = {"sources": {}}
 
-    meta = read_json("meta.json") or {}
-    meta.setdefault("sources", {})
-    now = int(time.time())
-    failures = 0
-
-    def run(key, fn, label):
-        nonlocal failures
+    def run(key, fn, label, required=False):
         try:
-            count = fn()
-            meta["sources"][key] = {"label": label, "updated": int(time.time()), "count": count, "ok": True}
-        except Exception as e:  # keep the previous file if a source is down
-            failures += 1
+            n = fn(out)
+            meta["sources"][key] = {"label": label, "updated": int(time.time()), "count": n, "ok": True}
+        except Exception as e:
             print(f"!! {key} failed: {e}", file=sys.stderr, flush=True)
-            prev = meta["sources"].get(key, {})
-            prev.update({"label": label, "ok": False, "error": str(e)[:300], "last_attempt": int(time.time())})
-            meta["sources"][key] = prev
+            meta["sources"][key] = {"label": label, "ok": False, "error": str(e)[:300]}
+            if required:
+                raise
+            # Write an empty layer so the page still loads.
+            write_json(out, f"{key}.geojson", {"type": "FeatureCollection", "features": []})
 
-    # GACC boundaries rarely change: refresh once a day.
-    gacc_age = now - (meta["sources"].get("gacc", {}).get("updated") or 0)
-    if gacc_age > 86400 or not os.path.exists(os.path.join(DATA, "gacc.geojson")):
-        run("gacc", fetch_gaccs, "NIFC National GACC Boundaries")
-
+    run("gacc", fetch_gaccs, "NIFC National GACC Boundaries")
     run("perimeters", fetch_perimeters, "NIFC WFIGS Current Interagency Fire Perimeters")
-
-    fc_age = now - (meta["sources"].get("forecast", {}).get("updated") or 0)
-    if args.force_forecast or fc_age > args.forecast_max_age_hours * 3600 \
-            or not os.path.exists(os.path.join(DATA, "forecast.json")):
-        run("forecast", fetch_forecast, "Open-Meteo GFS/HRRR")
-    else:
-        print(f"Forecast is {fc_age/3600:.1f} h old; skipping (use --force-forecast to override).")
-
+    # The forecast is required: if NBM fails the job fails and the previous site stays live.
+    run("forecast", fetch_forecast, "NOAA NBM CONUS", required=True)
     meta["last_run"] = int(time.time())
-    write_json("meta.json", meta)
-    # Only fail the workflow if nothing usable exists.
-    if failures and not os.path.exists(os.path.join(DATA, "forecast.json")):
-        sys.exit(1)
+    write_json(out, "meta.json", meta)
 
 
 if __name__ == "__main__":
