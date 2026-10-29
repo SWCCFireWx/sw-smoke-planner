@@ -1,128 +1,138 @@
 # SW Smoke Dispersion & Burn-Window Planner
 
 A free web page, hosted on GitHub Pages, for smoke dispersion planning in the
-**Southwest GACC (Arizona & New Mexico)** with the edges of the neighboring
+**Southwest GACC (Arizona & New Mexico)** plus the edges of the neighboring
 GACCs (Southern California, Great Basin, Rocky Mountain, Southern Area).
 
-It shows, hour by hour for the next 4 days:
+Live site (once set up): **https://swccfirewx.github.io/sw-smoke-planner/**
 
-- **Ventilation rate** (mixing height × transport wind, knot-feet) rated on the New Mexico
-  smoke-management scale: Poor < 40k · Fair 40–60k · Good 60–100k · Very Good 100–150k · Excellent ≥ 150k
-- **Mixing height** and **transport wind** (with arrows pointing where smoke will go)
-- **Chance of precipitation**, **24-hour precip totals**, **10-m wind**, **gusts**, **RH**
-- **Burn windows**: hours that meet *your* criteria (ventilation, precip chance, wind, gusts, RH, time of day)
+## What it shows
+All forecast data come from the **NOAA National Blend of Models (NBM)**, the
+2.5-km CONUS blend that NWS forecasters start from. It runs hourly; the site
+picks up the newest run every 3 hours. The map is a smooth, interpolated
+surface (0.1° / ~10 km grid built from the 2.5-km NBM).
+
+- **Ventilation rate** = NBM mixing height (ft AGL) × NBM transport wind (kt), rated on the
+  New Mexico smoke-management scale: Poor < 40k · Fair 40–60k · Good 60–100k · Very Good 100–150k · Excellent ≥ 150k knot-feet
+- **Mixing height**, **transport wind** (arrows point where smoke goes)
+- **Chance of precipitation** (NBM 1-hr PoP; 3-hr after 48 h), **24-hour precip totals**
+- **10-m wind**, **gusts**, **RH**, **temperature**
+- **Burn windows**: hours meeting *your* criteria (ventilation, precip chance, wind, gusts, RH, time of day)
 - Current **wildfire and prescribed-fire perimeters** (NIFC WFIGS) and **GACC boundaries**
-- All times in **both New Mexico (Mountain) time and Arizona time** — DST is handled automatically
+- All times in **both New Mexico (Mountain) time and Arizona time**, DST handled automatically
 
-You never have to touch ArcGIS. A GitHub Action downloads everything on a schedule
-and saves it into this repository; the page just reads those saved files.
+Forecast length: hourly through 48 hours, then every 3 hours out to 96 hours.
 
----
+## How it works
+A GitHub Action (`.github/workflows/update-data.yml`) runs every 3 hours. It:
+1. downloads only the needed NBM fields from NOAA's public data bucket on AWS,
+2. downloads current perimeters and GACC boundaries from NIFC,
+3. packages them with `index.html` and publishes the site to GitHub Pages.
 
-## What's in this repository
+Nothing is committed to the repository, so it stays small. You never touch ArcGIS,
+NOAA servers or API keys.
 
 | File | What it does |
 |---|---|
 | `index.html` | The web page (map, charts, burn windows) |
-| `fetch_data.py` | Downloads perimeters, GACC boundaries and the forecast into the `data/` folder |
-| `.github/workflows/update-data.yml` | Tells GitHub to run `fetch_data.py` every 2 hours and save the results |
-| `data/` | Created automatically by the first run — don't create it yourself |
+| `fetch_data.py` | Downloads NBM, perimeters and boundaries and builds the `data/` folder |
+| `.github/workflows/update-data.yml` | Runs the script every 3 hours and publishes the site |
 
 ---
 
 ## Step-by-step setup (about 15 minutes, all in a web browser)
 
-### Step 1 — Create a GitHub account
-1. Go to **https://github.com** and click **Sign up**.
-2. Pick a username — it becomes part of your web address
-   (`https://YOUR-USERNAME.github.io/...`), so choose something you're happy sharing.
-3. Verify your email.
+> **Already set up the earlier (Open-Meteo) version?** Skip to
+> [Updating from the earlier version](#updating-from-the-earlier-version).
 
-### Step 2 — Create a new repository
-1. Click the **+** in the top-right corner → **New repository**.
-2. **Repository name:** `sw-smoke-planner` (any name works; it becomes part of the URL).
-3. Set it to **Public**. *(Free GitHub Pages requires a public repo.)*
-4. Check **Add a README file**.
-5. Click **Create repository**.
+### Step 1: Create a GitHub account
+Go to **https://github.com**, click **Sign up**, and verify your email.
+(This project uses the username **SWCCFireWx**.)
 
-### Step 3 — Upload the page and the script
-1. In your new repository, click **Add file → Upload files**.
-2. Drag in **`index.html`**, **`fetch_data.py`** and **`README.md`** (replace the README GitHub made).
-3. Scroll down and click **Commit changes**.
+### Step 2: Create a new repository
+1. Click **+** (top right) → **New repository**.
+2. **Repository name:** `sw-smoke-planner`
+3. Choose **Public** (free GitHub Pages requires a public repo).
+4. Check **Add a README file** → **Create repository**.
 
-### Step 4 — Add the scheduled workflow
-Hidden folders like `.github` often don't upload by drag-and-drop, so create this one by hand:
+### Step 3: Upload the page and the script
+1. In the repo, click **Add file → Upload files**.
+2. Drag in **`index.html`**, **`fetch_data.py`** and **`README.md`**.
+3. Click **Commit changes**.
 
-1. Click **Add file → Create new file**.
-2. In the file-name box type exactly:
-   `.github/workflows/update-data.yml`
-   (each `/` you type creates a folder — that's expected).
-3. Open `update-data.yml` from the zip in Notepad/TextEdit, copy **all** of it, and paste it into the big edit box.
-4. Click **Commit changes…** → **Commit changes**.
+### Step 4: Add the workflow file
+Hidden folders like `.github` often don't drag-and-drop, so create it by hand:
+1. **Add file → Create new file**.
+2. File name, typed exactly: `.github/workflows/update-data.yml`
+   (typing each `/` makes a folder; that's expected).
+3. Open `update-data.yml` in Notepad (Windows) or TextEdit (Mac), copy all of it, and paste it into the edit box.
+4. **Commit changes…** → **Commit changes**.
 
-### Step 5 — Let the workflow save data
-1. Go to **Settings** (tab at the top of the repo) → **Actions** → **General**.
-2. Under **Workflow permissions**, choose **Read and write permissions**.
-3. Click **Save**.
+### Step 5: Turn on GitHub Pages, set to "GitHub Actions"
+1. **Settings** (top of the repo) → **Pages** (left sidebar).
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+   (Not "Deploy from a branch".) There's nothing else to save.
 
-### Step 6 — Turn on GitHub Pages
-1. **Settings** → **Pages** (left sidebar).
-2. Under **Build and deployment → Source**, choose **Deploy from a branch**.
-3. **Branch:** `main`, folder **`/ (root)`** → **Save**.
+### Step 6: Run it the first time
+1. Click the **Actions** tab. If asked, click **I understand my workflows, go ahead and enable them**.
+2. Click **Update data** (left) → **Run workflow** → green **Run workflow**.
+3. Wait for both jobs (**build** and **deploy**) to show green checks, about 5–10 minutes.
 
-### Step 7 — Run the first data download
-1. Click the **Actions** tab.
-2. If GitHub asks, click **I understand my workflows, go ahead and enable them**.
-3. Click **Update data** on the left → **Run workflow** (right side) → green **Run workflow**.
-4. Wait for the green check mark (about 3–6 minutes; the forecast for ~350 grid points is
-   downloaded in polite batches).
-5. A `data/` folder now appears in the repository.
+### Step 7: Open your site
+**https://swccfirewx.github.io/sw-smoke-planner/**
 
-### Step 8 — Open your page
-Go back to **Settings → Pages**. After a minute or two it shows:
-**"Your site is live at `https://YOUR-USERNAME.github.io/sw-smoke-planner/`"**.
-Bookmark it and share it with your crew.
+(Also shown under **Settings → Pages**, and as a link on the finished workflow run.)
+From now on it updates itself every 3 hours.
 
-From now on it updates by itself: perimeters every 2 hours, forecast about 4 times a day.
+---
+
+## Updating from the earlier version
+If you already set up the Open-Meteo version:
+1. Upload the new **`index.html`**, **`fetch_data.py`** and **`README.md`** with **Add file → Upload files**
+   (they replace the old ones) → **Commit changes**.
+2. Open `.github/workflows/update-data.yml` in the repo, click the **pencil** (Edit), select everything,
+   paste in the new version, and **Commit changes**.
+3. **Settings → Pages → Source:** change to **GitHub Actions**.
+4. **Actions → Update data → Run workflow.**
+5. Optional: the old `data/` folder in the repo is no longer used. To delete it, open it,
+   then use the **…** menu → **Delete directory** and commit.
 
 ---
 
 ## Using the page
-
 - **Map layer** (left): start with *Ventilation rate* or *Burn-window hours (selected day)*.
-- **Forecast hour slider** / **Jump to 1 PM on** buttons / ◀ ▶ keys move through time.
-- The two clocks at the top always show the selected hour in **New Mexico** and **Arizona** time.
-  From early November to mid-March they match; in summer Arizona is 1 hour behind.
-  The Navajo Nation observes daylight time — use the NM clock there.
-- **NM / Arizona** buttons choose which time zone the day buttons, charts and tables use.
-- **Burn-window criteria** are saved in your browser. Change them to match your burn plan prescription.
-- **Click any grid square** for charts, a list of potential burn windows (in both time zones) and a daily summary.
-- Click a fire perimeter for name, type (wildfire / prescribed), acres, containment and dates.
+- **Hover** anywhere for values; **click** for charts, burn windows (in both time zones) and a daily table.
+- **Forecast hour slider**, the **Jump to 1 PM** day buttons, ◀ ▶ arrow keys, or **Play** to animate.
+- The two clocks always show the selected time in **New Mexico** and **Arizona** time.
+  November to mid-March they match; in summer Arizona is 1 hour behind.
+  The Navajo Nation observes daylight time, so use the NM clock there.
+- **NM / Arizona** buttons choose the time zone for day buttons, charts and tables.
+- **Burn-window criteria** are saved in your browser; set them to your prescription.
+- Basemaps (topo, imagery, light gray, OSM) are in the layer control at top right.
 
-## Limitations — please read
-- Forecast is model guidance (NOAA GFS + HRRR via Open-Meteo) on a ~0.75° (~45 mile) grid.
-  It does **not** resolve valley inversions, drainage winds or terrain channeling — overnight
-  smoke in valleys will be worse than shown. **Always request a NWS spot forecast** and follow
-  your burn plan and smoke permit (NMED, ADEQ, tribal or local air agency).
-- Perimeters only exist for incidents that have one published in WFIGS; small or new fires may not show.
-- Open-Meteo's free API is for non-commercial use.
+## Limitations
+- NBM is the best starting point NWS forecasters use, but it is still guidance. Even at 2.5 km it
+  under-resolves valley inversions and drainage flow, so overnight smoke in valleys can be worse than shown.
+  **Always get a NWS spot forecast** and follow your burn plan and smoke permit (NMED, ADEQ, tribal or local air agency).
+- Perimeters exist only for incidents with a published WFIGS perimeter.
+- NBM covers CONUS; the far southern edge of the map (Mexico) may be blank.
 
 ## Troubleshooting
 | Problem | Fix |
 |---|---|
-| Page says "No forecast data yet" | Run Step 7, wait for the green check, reload |
-| Red ✗ on the Actions run | Click it → click the failed step to read the error. Most common: Step 5 not done (push permission denied) |
-| Header shows "⚠ … h old" | Check the Actions tab; re-run **Update data** manually |
-| Scheduled runs stopped | GitHub pauses schedules after 60 days with no repository activity. Open **Actions → Update data → Enable workflow** |
-| Page didn't change after an edit | Wait 1–2 minutes, then hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) |
+| Site shows 404 | Step 5: Pages source must be **GitHub Actions**, then rerun Step 6 |
+| "No forecast data yet" | Run Step 6 and wait for both green checks, then reload |
+| Red ✗ on a run | Click the run → click the failed step to read the error. If NBM was briefly unavailable, the previous site stays up; the next run usually fixes it |
+| Header shows "⚠ … h old" | Check the Actions tab; rerun **Update data** |
+| Scheduled runs stopped | GitHub pauses schedules after 60 days with no repo activity: **Actions → Update data → Enable workflow** |
+| Page didn't change after an edit | Wait for the run triggered by your commit, then hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) |
 
-## Changing the map area or grid
-Edit the `BBOX` (perimeters/boundaries) and `GRID` (forecast points) values near the top of
-`fetch_data.py`. A finer `step` means more points: keep the total under ~500 so the free
-forecast API's daily limit isn't exceeded.
+## Changing the area or detail
+Edit `BBOX` (map area) and `STEP` (grid spacing) near the top of `fetch_data.py`.
+A smaller `STEP` (e.g. 0.05) gives more detail but ~4× larger files and slower loading.
 
 ## Data sources
-- NIFC WFIGS Current Interagency Fire Perimeters (ArcGIS REST)
-- NIFC National GACC Boundaries (ArcGIS REST)
-- Open-Meteo GFS API (NOAA GFS and HRRR), CC BY 4.0
+- NOAA National Blend of Models, CONUS core (NOAA Open Data on AWS: `noaa-nbm-grib2-pds`)
+- NIFC WFIGS Current Interagency Fire Perimeters
+- NIFC National GACC Boundaries
 - Ventilation categories: New Mexico Smoke Management Program
