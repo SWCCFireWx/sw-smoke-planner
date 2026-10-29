@@ -2,27 +2,27 @@ name: Update data
 
 on:
   schedule:
-    # Every 2 hours (GitHub schedules are in UTC). Perimeters refresh every run;
-    # the forecast refreshes when it is more than ~5.5 hours old (about 4x per day).
-    - cron: "17 */2 * * *"
+    # Every 3 hours (GitHub schedules are in UTC). Each run pulls the latest
+    # NBM cycle plus current perimeters and republishes the site.
+    - cron: "23 */3 * * *"
   workflow_dispatch:
-    inputs:
-      force_forecast:
-        description: "Refresh the forecast even if it is recent"
-        type: boolean
-        default: true
+  push:
+    branches: [main]
+    paths: ["index.html", "fetch_data.py", ".github/workflows/update-data.yml"]
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: update-data
+  group: pages
   cancel-in-progress: false
 
 jobs:
-  update:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -32,23 +32,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Fetch perimeters, GACC boundaries and forecast
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_forecast }}" = "true" ]; then
-            python fetch_data.py --force-forecast
-          else
-            python fetch_data.py
-          fi
+      - name: Install libraries
+        run: pip install numpy scipy pyproj pygrib
 
-      - name: Commit updated data
+      - name: Build site and data (NBM, perimeters, GACC boundaries)
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/
-          if git diff --cached --quiet; then
-            echo "No data changes."
-          else
-            git commit -m "Data update $(date -u +'%Y-%m-%d %H:%M UTC')"
-            git pull --rebase --autostash
-            git push
-          fi
+          mkdir -p _site
+          cp index.html _site/
+          python fetch_data.py --out _site/data
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
