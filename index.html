@@ -10,17 +10,15 @@
 <style>
   :root{
     --ink:#1d2327; --muted:#5d6970; --line:#d9dee2; --bg:#f4f5f2; --panel:#ffffff;
-    --head:#2b2f2a; --head-ink:#f3efe6; --accent:#c4561b; --accent-soft:#f6e3d6;
-    --ok:#2e9e44; --warn:#b7791f; --bad:#b0302a;
-    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --head:#2b2f2a; --head-ink:#f3efe6; --accent:#c4561b; --ok:#2e9e44;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
   header{background:var(--head);color:var(--head-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center}
   header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px}
-  header .sub{font-size:12px;opacity:.75}
+  header .sub{font-size:12px;opacity:.78}
   .clocks{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
-  .clock{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 12px;min-width:210px}
+  .clock{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 12px;min-width:215px}
   .clock .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.6px;opacity:.75}
   .clock .val{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums}
   .clock.primary{border-color:var(--accent);background:rgba(196,86,27,.22)}
@@ -38,29 +36,31 @@
   button.on{background:var(--accent);border-color:var(--accent);color:#fff}
   .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .crit{display:grid;grid-template-columns:1fr auto;gap:6px 8px;align-items:center}
-  .crit label{color:var(--ink)}
   .days{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
   .days button{padding:3px 7px;font-size:12.5px}
   .legend{display:flex;flex-direction:column;gap:3px;font-size:12.5px}
   .legend .sw{display:inline-block;width:18px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.15)}
+  .ramp{height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.15)}
+  .ticks{position:relative;height:16px;font-size:11px;color:var(--muted)}
+  .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
   .small{font-size:12px;color:var(--muted)}
   .chk{display:flex;gap:6px;align-items:center;margin:3px 0}
-  .right{display:flex;flex-direction:column;min-height:0}
-  #map{flex:1;min-height:300px}
+  .right{display:flex;flex-direction:column;min-height:0;position:relative}
+  #map{flex:1;min-height:300px;background:#dfe3e0}
   #detail{background:var(--panel);border-top:1px solid var(--line);max-height:52%;overflow:auto;padding:10px 16px;display:none}
   #detail.open{display:block}
   #detail h3{margin:0 0 4px;font-size:15px}
   .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0}
-  .chartbox{position:relative;height:200px}
+  .chartbox{position:relative;height:210px}
   table{border-collapse:collapse;width:100%;font-size:12.5px}
   th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
   th{color:var(--muted);font-weight:600}
-  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600;color:#fff}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;font-weight:600;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.4)}
   .win{padding:5px 8px;border-left:4px solid var(--ok);background:#eef7ef;margin:4px 0;border-radius:3px}
   .banner{position:absolute;z-index:1000;top:10px;left:50%;transform:translateX(-50%);background:#fff4e5;border:1px solid #f0c27a;padding:8px 14px;border-radius:8px;max-width:90%;box-shadow:0 2px 8px rgba(0,0,0,.15);display:none}
-  .arr{width:18px;height:18px;transform-origin:50% 50%;pointer-events:none}
-  .arr svg{width:18px;height:18px;display:block}
-  .leaflet-tooltip.cell{font-size:12px;line-height:1.35}
+  #hover{position:absolute;z-index:900;pointer-events:none;background:rgba(255,255,255,.95);border:1px solid #bbb;border-radius:6px;padding:5px 8px;font-size:12px;line-height:1.35;box-shadow:0 1px 6px rgba(0,0,0,.2);display:none;max-width:290px}
+  #loading{position:absolute;z-index:950;right:12px;bottom:28px;background:rgba(43,47,42,.85);color:#fff;font-size:12px;padding:4px 10px;border-radius:12px;display:none}
+  .smooth-layer{position:absolute;left:0;top:0;pointer-events:none;image-rendering:auto}
   .closebtn{float:right}
   .stale{color:#ffd7a8}
   @media (max-width:900px){
@@ -77,7 +77,7 @@
 <header id="hdr">
   <div>
     <h1>SW Smoke Dispersion &amp; Burn-Window Planner</h1>
-    <div class="sub">Southwest GACC (AZ/NM) + neighboring GACCs · <span id="updated">loading…</span></div>
+    <div class="sub">National Blend of Models · Southwest GACC (AZ/NM) + neighboring GACCs · <span id="updated">loading…</span></div>
   </div>
   <div class="clocks">
     <div class="clock" id="clockNM"><div class="lbl" id="lblNM">New Mexico · Mountain</div><div class="val" id="valNM">—</div></div>
@@ -91,14 +91,14 @@
     <h2>Map layer</h2>
     <select id="layerSel"></select>
     <div class="chk"><input type="checkbox" id="arrowsChk" checked><label for="arrowsChk">Wind arrows (point where smoke goes)</label></div>
-    <div class="row small">Grid opacity <input type="range" id="opacity" min="0.15" max="0.9" step="0.05" value="0.55" style="width:120px"></div>
+    <div class="row small">Layer opacity <input type="range" id="opacity" min="0.2" max="0.95" step="0.05" value="0.65" style="width:120px"></div>
 
     <h2>Forecast hour</h2>
     <input type="range" id="tSlider" min="0" max="0" value="0">
     <div class="row" style="margin-top:6px">
-      <button id="prev" title="Previous hour">◀</button>
+      <button id="prev" title="Previous step">◀</button>
       <button id="play" title="Animate">▶ Play</button>
-      <button id="next" title="Next hour">▶</button>
+      <button id="next" title="Next step">▶</button>
       <button id="nowBtn">Now</button>
     </div>
     <div class="small" style="margin-top:6px">Jump to 1 PM on:</div>
@@ -106,6 +106,7 @@
     <div class="row small" style="margin-top:8px">Day / table times in:
       <button id="tzNM" class="on">NM (Mountain)</button><button id="tzAZ">Arizona</button>
     </div>
+    <div class="small" style="margin-top:4px">NBM is hourly through 48 h, then every 3 h.</div>
 
     <h2>Burn-window criteria</h2>
     <div class="crit">
@@ -125,7 +126,7 @@
     <div class="chk"><input type="checkbox" id="cDay" checked><label for="cDay">Only between</label>
       <input type="number" id="cH0" value="9" min="0" max="23" style="width:52px"> and
       <input type="number" id="cH1" value="17" min="1" max="24" style="width:52px"> local</div>
-    <div class="small">Hours that pass every check are shaded green in the point charts and counted on the “Burn-window hours” layer. These are planning aids — your burn plan prescription and spot forecast govern.</div>
+    <div class="small">Hours passing every check are shaded green in the point charts and counted on the “Burn-window hours” layer. Planning aid only — your burn plan prescription and spot forecast govern.</div>
 
     <h2>Overlays</h2>
     <div class="chk"><input type="checkbox" id="oGacc" checked><label for="oGacc">GACC boundaries (SW in bold)</label></div>
@@ -138,14 +139,18 @@
 
     <h2>About the numbers</h2>
     <div class="small">
-      <b>Ventilation rate</b> = mixing height (ft AGL) × transport wind (kt), in knot-feet, rated on the New Mexico smoke-management scale: Poor &lt;40k, Fair 40–60k, Good 60–100k, Very Good 100–150k, Excellent ≥150k. <b>Transport wind</b> is the mean wind through the mixed layer (10-m wind plus GFS pressure levels inside it). <b>10-m wind</b> is at 33 ft; 20-ft winds run somewhat lower.
-      Forecast: Open-Meteo (NOAA GFS + HRRR), ~0.75° grid, refreshed ~4×/day. Perimeters: NIFC WFIGS current perimeters. Boundaries: NIFC National GACC Boundaries.
-      Coarse-grid model guidance — terrain-driven drainage and inversions in valleys will be worse than shown. Always get a spot forecast.
+      All forecast fields come from the <b>NOAA National Blend of Models (NBM)</b> CONUS 2.5-km grid, averaged to a 0.1° (~10 km) grid and smoothly interpolated on the map.
+      <b>Mixing height</b>, <b>transport wind</b> and 10-m wind/gusts are NBM's own fields. <b>Ventilation rate</b> = mixing height (ft AGL) × transport wind (kt), rated on the New Mexico smoke-management scale: Poor &lt;40k, Fair 40–60k, Good 60–100k, Very Good 100–150k, Excellent ≥150k knot-feet.
+      <b>Chance of precip</b> is NBM's probability of ≥0.01" in the 1-hour (3-hour after 48 h) period ending at the selected time.
+      10-m wind is at 33 ft; 20-ft winds run somewhat lower. Perimeters: NIFC WFIGS. Boundaries: NIFC GACCs.
+      Valley inversions and drainage winds can be worse than any grid shows — always get a spot forecast.
     </div>
   </aside>
 
-  <section class="right" style="position:relative">
+  <section class="right">
     <div class="banner" id="banner"></div>
+    <div id="hover"></div>
+    <div id="loading">Loading…</div>
     <div id="map"></div>
     <div id="detail"></div>
   </section>
@@ -153,7 +158,7 @@
 
 <script>
 "use strict";
-// ---------------------------------------------------------------- config
+// ================================================================= config
 const TZ = { NM: "America/Denver", AZ: "America/Phoenix" };
 const DATA = "data/";
 const VENT = [
@@ -163,37 +168,40 @@ const VENT = [
   { name: "Very Good", min: 100000,    color: "#e8c31a" },
   { name: "Excellent", min: 150000,    color: "#d7301f" },
 ];
-const SEQ_WIND = ["#f7fbff","#c6dbef","#9ecae1","#6baed6","#fdae6b","#f16913","#d94801","#7f2704"];
+const WIND_STOPS = (u) => [[0,"#f7fbff"],[5,"#c6dbef"],[10,"#6baed6"],[15,"#2171b5"],[20,"#fdae6b"],[25,"#f16913"],[30,"#d94801"],[40,"#7f2704"],[50,"#4a1486"]];
+const BURN_FIELDS = ["vi", "pop", "ws", "wg", "rh"];
+// mode "class": crisp classes on the smooth surface; "cont": continuous ramp. A null color is transparent.
 const LAYERS = {
-  vent:   { label: "Ventilation rate (NM categories)", arrows: "tw" },
-  burnhrs:{ label: "Burn-window hours (selected day)", arrows: null, units: "h",
-            breaks: [0, 1, 3, 5, 7, 9], colors: [null, "#d9f0d3", "#a6dba0", "#5aae61", "#1b7837", "#00441b"] },
-  burn:   { label: "Meets burn criteria (this hour)", arrows: "tw" },
-  mh:     { label: "Mixing height (ft AGL)", arrows: "tw", units: "ft",
-            breaks: [0, 1000, 2000, 3000, 4500, 6000, 8000, 10000],
-            colors: ["#3f007d","#6a51a3","#807dba","#9ecae1","#41ab5d","#addd8e","#fec44f","#ec7014"] },
-  tw:     { label: "Transport wind (kt)", arrows: "tw", units: "kt",
-            breaks: [0, 5, 10, 15, 20, 25, 30, 40], colors: SEQ_WIND },
-  pop:    { label: "Chance of precipitation (%)", arrows: null, units: "%",
-            breaks: [0, 10, 20, 30, 50, 70, 90], colors: [null, "#deebf7", "#c6dbef", "#9ecae1", "#4292c6", "#2171b5", "#08306b"] },
-  qpf24:  { label: "Precip total, next 24 h (in)", arrows: null, units: "in",
-            breaks: [0, 0.01, 0.05, 0.10, 0.25, 0.50, 1.0], colors: [null, "#d9f0a3", "#a1d99b", "#41ab5d", "#2171b5", "#6a51a3", "#ae017e"] },
-  ws:     { label: "10-m wind speed (mph)", arrows: "ws", units: "mph",
-            breaks: [0, 5, 10, 15, 20, 25, 30, 40], colors: SEQ_WIND },
-  wg:     { label: "Wind gusts (mph)", arrows: "ws", units: "mph",
-            breaks: [0, 5, 10, 15, 20, 25, 30, 40], colors: SEQ_WIND },
-  rh:     { label: "Relative humidity (%)", arrows: null, units: "%",
-            breaks: [0, 10, 15, 20, 30, 40, 60, 80], colors: ["#7f2704","#d94801","#fd8d3c","#fdd0a2","#c7e9c0","#74c476","#238b45","#00441b"] },
+  vent:    { label: "Ventilation rate (NM categories)", need: ["vi"], arrows: "tw", mode: "class", units: "kt-ft" },
+  burnhrs: { label: "Burn-window hours (selected day)", need: BURN_FIELDS, arrows: null, mode: "cont", units: "h",
+             stops: [[0, null], [0.9, null], [1, "#d9f0d3"], [3, "#a6dba0"], [6, "#5aae61"], [9, "#1b7837"], [12, "#00441b"]], ticks: [1, 3, 6, 9, 12] },
+  burn:    { label: "Meets burn criteria (this hour)", need: BURN_FIELDS, arrows: "tw", mode: "burn" },
+  mh:      { label: "Mixing height (ft AGL)", need: ["mh"], arrows: "tw", mode: "cont", units: "ft",
+             stops: [[0,"#3f007d"],[1000,"#6a51a3"],[2000,"#807dba"],[3000,"#9ecae1"],[4500,"#41ab5d"],[6000,"#addd8e"],[8000,"#fec44f"],[10000,"#ec7014"],[14000,"#b30000"]],
+             ticks: [0, 2000, 4500, 8000, 14000] },
+  tw:      { label: "Transport wind (kt)", need: [], arrows: "tw", mode: "cont", units: "kt", field: "tw", stops: WIND_STOPS(), ticks: [0, 10, 20, 30, 50] },
+  pop:     { label: "Chance of precipitation (%)", need: ["pop"], arrows: null, mode: "cont", units: "%",
+             stops: [[0, null], [4, null], [5, "#deebf7"], [20, "#9ecae1"], [40, "#4292c6"], [60, "#2171b5"], [80, "#08519c"], [100, "#08306b"]], ticks: [5, 20, 40, 60, 80, 100] },
+  qpf24:   { label: "Precip total, next 24 h (in)", need: ["qpf"], arrows: null, mode: "cont", units: "in",
+             stops: [[0, null], [0.009, null], [0.01, "#d9f0a3"], [0.1, "#41ab5d"], [0.25, "#2171b5"], [0.5, "#6a51a3"], [1, "#ae017e"], [2, "#67001f"]], ticks: [0.01, 0.25, 0.5, 1, 2] },
+  ws:      { label: "10-m wind speed (mph)", need: ["ws"], arrows: "ws", mode: "cont", units: "mph", stops: WIND_STOPS(), ticks: [0, 10, 20, 30, 50] },
+  wg:      { label: "Wind gusts (mph)", need: ["wg"], arrows: "ws", mode: "cont", units: "mph", stops: WIND_STOPS(), ticks: [0, 10, 20, 30, 50] },
+  rh:      { label: "Relative humidity (%)", need: ["rh"], arrows: null, mode: "cont", units: "%",
+             stops: [[0,"#7f2704"],[10,"#d94801"],[15,"#fd8d3c"],[20,"#fdd0a2"],[30,"#c7e9c0"],[45,"#74c476"],[60,"#238b45"],[85,"#00441b"]], ticks: [0, 15, 30, 60, 85] },
+  t:       { label: "Temperature (°F)", need: ["t"], arrows: null, mode: "cont", units: "°F",
+             stops: [[0,"#313695"],[20,"#4575b4"],[32,"#74add1"],[45,"#abd9e9"],[55,"#ffffbf"],[65,"#fee090"],[75,"#fdae61"],[85,"#f46d43"],[100,"#a50026"]], ticks: [0, 32, 55, 75, 100] },
 };
+LAYERS.vent.field = "vi"; LAYERS.mh.field = "mh"; LAYERS.pop.field = "pop"; LAYERS.ws.field = "ws";
+LAYERS.wg.field = "wg"; LAYERS.rh.field = "rh"; LAYERS.t.field = "t"; LAYERS.tw.need = ["tw"];
 
-// ---------------------------------------------------------------- state
+// ================================================================= state
 const S = {
-  fc: null, times: [], N: 0, t: 0, layer: "vent", primary: "NM",
-  cells: [], arrows: [], point: null, playing: null, opacity: 0.55,
-  dayKeys: [], crit: null, gacc: null, charts: [],
+  M: null, times: [], dur: [], N: 0, NC: 0, t: 0, layer: "vent", primary: "NM",
+  F: {}, loadingF: {}, crit: null, critVer: 0, cache: new Map(),
+  point: null, playing: null, opacity: 0.65, dayKeys: [], localHours: [], gacc: null, charts: [],
 };
 
-// ---------------------------------------------------------------- helpers
+// ================================================================= helpers
 const $ = id => document.getElementById(id);
 const fmtCache = {};
 function fmt(epoch, tz, opts) {
@@ -209,8 +217,7 @@ function offsetMin(epoch, tz) {
   const d = new Date(epoch * 1000);
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23",
     year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(d).map(x => [x.type, x.value]));
-  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute);
-  return Math.round((asUTC - d.getTime()) / 60000);
+  return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - d.getTime()) / 60000);
 }
 const longT  = (e, tz) => fmt(e, tz, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " " + tzAbbr(e, tz);
 const shortT = (e, tz) => fmt(e, tz, { hour: "numeric", minute: "2-digit" });
@@ -219,29 +226,64 @@ const localHour = (e, tz) => +fmt(e, tz, { hour: "numeric", hourCycle: "h23" });
 const pTZ = () => TZ[S.primary];
 const otherKey = () => (S.primary === "NM" ? "AZ" : "NM");
 function bothTimes(e) {
-  const a = longT(e, TZ.NM), b = longT(e, TZ.AZ);
-  return offsetMin(e, TZ.NM) === offsetMin(e, TZ.AZ) ? `${a} (same in AZ)` : `NM ${a} · AZ ${b}`;
+  return offsetMin(e, TZ.NM) === offsetMin(e, TZ.AZ) ? `${longT(e, TZ.NM)} (same in AZ)` : `NM ${longT(e, TZ.NM)} · AZ ${longT(e, TZ.AZ)}`;
 }
-function ventCat(v) { if (v == null) return null; let c = VENT[0]; for (const x of VENT) if (v >= x.min) c = x; return c; }
-function stepColor(L, v) {
-  if (v == null || Number.isNaN(v)) return null;
-  let c = L.colors[0];
-  for (let i = 0; i < L.breaks.length; i++) if (v >= L.breaks[i]) c = L.colors[i];
-  return c;
-}
-const k = v => (v == null ? "—" : Math.round(v / 1000) + "k");
-const num = (v, d = 0) => (v == null ? "—" : Number(v).toFixed(d));
-const compass = d => d == null ? "" : ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(d / 22.5) % 16];
+function ventCat(v) { if (v == null || Number.isNaN(v)) return null; let c = VENT[0]; for (const x of VENT) if (v >= x.min) c = x; return c; }
+const k = v => (v == null || Number.isNaN(v) ? "—" : Math.round(v / 1000) + "k");
+const num = (v, d = 0) => (v == null || Number.isNaN(v) ? "—" : Number(v).toFixed(d));
+const compass = d => d == null || Number.isNaN(d) ? "" : ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(d / 22.5) % 16];
 function store(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 function recall(key) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
 function banner(msg) { const b = $("banner"); b.innerHTML = msg; b.style.display = msg ? "block" : "none"; }
+function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
 
-// ---------------------------------------------------------------- criteria
+// ================================================================= data loading
+async function getJSON(name) {
+  const r = await fetch(DATA + name + "?v=" + Math.floor(Date.now() / 600000), { cache: "no-cache" });
+  if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
+  return r.json();
+}
+let pending = 0;
+function busy(d) { pending += d; $("loading").style.display = pending > 0 ? "block" : "none"; }
+
+// Each field is a PNG; pixel = 16-bit value (R high byte, G low byte). Decoded to Float32Array [t][row][col].
+function loadField(name) {
+  if (S.F[name]) return Promise.resolve(S.F[name]);
+  if (S.loadingF[name]) return S.loadingF[name];
+  const meta = S.M.fields[name];
+  busy(1);
+  S.loadingF[name] = (async () => {
+    const r = await fetch(DATA + meta.file + "?v=" + S.M.generated);
+    if (!r.ok) throw new Error(`${meta.file}: HTTP ${r.status}`);
+    const blob = await r.blob();
+    let bmp;
+    try { bmp = await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" }); }
+    catch (e) {
+      bmp = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(blob); });
+    }
+    const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+    const cx = c.getContext("2d", { willReadFrequently: true });
+    cx.drawImage(bmp, 0, 0);
+    const d = cx.getImageData(0, 0, c.width, c.height).data;
+    const n = c.width * c.height, out = new Float32Array(n), miss = S.M.missing;
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      const q = (d[j] << 8) | d[j + 1];
+      out[i] = q === miss ? NaN : q * meta.scale + meta.offset;
+    }
+    S.F[name] = out;
+    return out;
+  })().finally(() => busy(-1));
+  return S.loadingF[name];
+}
+const loadFields = names => Promise.all([...new Set(names)].map(loadField));
+const allFields = () => Object.keys(S.M.fields);
+const fv = (name, t, c) => S.F[name] ? S.F[name][t * S.NC + c] : NaN;
+
+// ================================================================= criteria
 function readCrit() {
-  S.crit = {
-    vent: +$("cVent").value, pop: +$("cPop").value, wind: +$("cWind").value, gust: +$("cGust").value,
-    rhMin: +$("cRhMin").value, rhMax: +$("cRhMax").value, day: $("cDay").checked, h0: +$("cH0").value, h1: +$("cH1").value,
-  };
+  S.crit = { vent: +$("cVent").value, pop: +$("cPop").value, wind: +$("cWind").value, gust: +$("cGust").value,
+    rhMin: +$("cRhMin").value, rhMax: +$("cRhMax").value, day: $("cDay").checked, h0: +$("cH0").value, h1: +$("cH1").value };
+  S.critVer++; S.cache.clear();
   store("swsmoke.crit", S.crit);
 }
 function applySavedCrit() {
@@ -249,157 +291,268 @@ function applySavedCrit() {
   $("cVent").value = c.vent; $("cPop").value = c.pop; $("cWind").value = c.wind; $("cGust").value = c.gust;
   $("cRhMin").value = c.rhMin; $("cRhMax").value = c.rhMax; $("cDay").checked = c.day; $("cH0").value = c.h0; $("cH1").value = c.h1;
 }
-// returns null if it meets, or the first failed check
-function failReason(p, t) {
-  const C = S.crit;
-  if (p.vi[t] == null) return "no data";
+// null = meets all criteria; otherwise the first failed check
+function failReason(t, c) {
+  const C = S.crit, vi = fv("vi", t, c);
+  if (Number.isNaN(vi)) return "no data";
   if (C.day) { const h = S.localHours[t]; if (h < C.h0 || h >= C.h1) return "outside hours"; }
-  if (p.vi[t] < C.vent) return "ventilation";
-  if (p.pop[t] != null && p.pop[t] > C.pop) return "precip chance";
-  if (p.ws[t] != null && p.ws[t] > C.wind) return "wind";
-  if (p.wg[t] != null && p.wg[t] > C.gust) return "gusts";
-  if (p.rh[t] != null && (p.rh[t] < C.rhMin || p.rh[t] > C.rhMax)) return "RH";
+  if (vi < C.vent) return "ventilation";
+  const pop = fv("pop", t, c), ws = fv("ws", t, c), wg = fv("wg", t, c), rh = fv("rh", t, c);
+  if (pop > C.pop) return "precip chance";
+  if (ws > C.wind) return "wind";
+  if (wg > C.gust) return "gusts";
+  if (rh < C.rhMin || rh > C.rhMax) return "RH";
   return null;
 }
-const meets = (p, t) => failReason(p, t) === null;
+const meets = (t, c) => failReason(t, c) === null;
 
-// ---------------------------------------------------------------- values per layer
-function qpf24(p, t) { let s = 0; for (let i = t; i < Math.min(t + 24, S.N); i++) s += p.qpf[i] || 0; return s; }
-function burnHours(p, key) { let n = 0; for (let i = 0; i < S.N; i++) if (S.dayKeys[i] === key && meets(p, i)) n++; return n; }
-function layerValue(L, p, t) {
-  switch (L) {
-    case "vent": return p.vi[t];
-    case "burn": return meets(p, t) ? 1 : 0;
-    case "burnhrs": return burnHours(p, S.dayKeys[t]);
-    case "qpf24": return qpf24(p, t);
-    default: return p[L][t];
+// ================================================================= per-layer grids
+// Returns a Float32Array (one value per grid cell) for a layer at time t.
+function layerGrid(L, t) {
+  const key = `${L}|${L === "burnhrs" ? S.dayKeys[t] : t}|${S.critVer}|${S.primary}`;
+  if (S.cache.has(key)) return S.cache.get(key);
+  const NC = S.NC; let g;
+  const D = LAYERS[L];
+  if (D.field) {
+    g = S.F[D.field].subarray(t * NC, (t + 1) * NC);
+  } else if (L === "burn") {
+    g = new Float32Array(NC);
+    for (let c = 0; c < NC; c++) { const r = failReason(t, c); g[c] = r === "no data" ? NaN : r === null ? 1 : 0; }
+  } else if (L === "burnhrs") {
+    g = new Float32Array(NC);
+    const day = S.dayKeys[t], ts = [];
+    for (let i = 0; i < S.N; i++) if (S.dayKeys[i] === day) ts.push(i);
+    for (let c = 0; c < NC; c++) {
+      if (Number.isNaN(fv("vi", t, c))) { g[c] = NaN; continue; }
+      let h = 0; for (const i of ts) if (meets(i, c)) h += S.dur[i];
+      g[c] = h;
+    }
+  } else if (L === "qpf24") {
+    g = new Float32Array(NC);
+    const t0 = S.times[t], idx = [];
+    for (let i = 0; i < S.N; i++) if (S.times[i] > t0 && S.times[i] <= t0 + 86400) idx.push(i);
+    const q = S.F.qpf;
+    for (let c = 0; c < NC; c++) { let s = 0, any = false; for (const i of idx) { const v = q[i * NC + c]; if (!Number.isNaN(v)) { s += v; any = true; } } g[c] = any ? s : NaN; }
   }
-}
-function layerColor(L, v) {
-  if (L === "vent") return ventCat(v)?.color || null;
-  if (L === "burn") return v ? "#2e9e44" : "#8a8f93";
-  return stepColor(LAYERS[L], v);
-}
-function layerText(L, v) {
-  if (v == null) return "—";
-  switch (L) {
-    case "vent": return `${ventCat(v).name} · ${Math.round(v).toLocaleString()} kt-ft`;
-    case "burn": return v ? "Meets criteria" : "Does not meet";
-    case "burnhrs": return `${v} h`;
-    case "qpf24": return `${v.toFixed(2)} in`;
-    case "mh": return `${Math.round(v).toLocaleString()} ft AGL`;
-    default: return `${v} ${LAYERS[L].units || ""}`;
-  }
+  if (S.cache.size > 40) S.cache.clear();
+  S.cache.set(key, g);
+  return g;
 }
 
-// ---------------------------------------------------------------- map
-const map = L.map("map", { preferCanvas: true, zoomSnap: 0.25, minZoom: 4 }).setView([34.4, -108.6], 6);
+// ================================================================= color ramps
+function buildColorizer(L) {
+  const D = LAYERS[L];
+  if (D.mode === "class") {
+    const cols = VENT.map(v => hex2rgb(v.color));
+    return v => { let i = 0; for (let j = 1; j < VENT.length; j++) if (v >= VENT[j].min) i = j; const c = cols[i]; return [c[0], c[1], c[2], 255]; };
+  }
+  if (D.mode === "burn") {
+    return v => v >= 0.5 ? [46, 158, 68, 255] : [120, 124, 128, 110];
+  }
+  // continuous: 1024-entry lookup table across the stop range
+  const st = D.stops, lo = st[0][0], hi = st[st.length - 1][0], n = 1024, lut = new Uint8ClampedArray(n * 4);
+  const rgba = s => s[1] ? [...hex2rgb(s[1]), 255] : [255, 255, 255, 0];
+  for (let i = 0; i < n; i++) {
+    const v = lo + (hi - lo) * i / (n - 1);
+    let j = 0; while (j < st.length - 2 && v > st[j + 1][0]) j++;
+    const a = rgba(st[j]), b = rgba(st[j + 1]);
+    const f = Math.max(0, Math.min(1, (v - st[j][0]) / ((st[j + 1][0] - st[j][0]) || 1)));
+    const ca = a[3] ? a : [b[0], b[1], b[2], 0], cb = b[3] ? b : [a[0], a[1], a[2], 0];
+    for (let q = 0; q < 4; q++) lut[i * 4 + q] = ca[q] + (cb[q] - ca[q]) * f;
+  }
+  return v => { const i = Math.max(0, Math.min(n - 1, Math.round((v - lo) / (hi - lo) * (n - 1)))) * 4; return [lut[i], lut[i + 1], lut[i + 2], lut[i + 3]]; };
+}
+
+// ================================================================= map
+const map = L.map("map", { zoomSnap: 0.25, minZoom: 4, maxZoom: 13 }).setView([34.4, -108.6], 6);
 const base = {
-  "Topographic": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 16, attribution: "Tiles © Esri" }),
-  "Imagery": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 17, attribution: "Tiles © Esri" }),
-  "OpenStreetMap": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    { maxZoom: 17, attribution: "© OpenStreetMap contributors" }),
+  "Topographic": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, attribution: "Tiles © Esri" }),
+  "Imagery": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 17, attribution: "Tiles © Esri" }),
+  "Light gray": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, attribution: "Tiles © Esri" }),
+  "OpenStreetMap": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 17, attribution: "© OpenStreetMap contributors" }),
 };
 base["Topographic"].addTo(map);
 L.control.layers(base, null, { position: "topright" }).addTo(map);
 L.control.scale({ imperial: true, metric: false }).addTo(map);
-map.attributionControl.addAttribution("Forecast: Open-Meteo (NOAA GFS/HRRR) · Fire data: NIFC");
-
+map.attributionControl.addAttribution("Forecast: NOAA NBM · Fire data: NIFC");
 map.createPane("grid");   map.getPane("grid").style.zIndex = 380;
 map.createPane("bounds"); map.getPane("bounds").style.zIndex = 420;
 map.createPane("perims"); map.getPane("perims").style.zIndex = 430;
-map.createPane("arrows"); map.getPane("arrows").style.zIndex = 440;
-const gridRenderer = L.canvas({ pane: "grid" });
-const gridLayer = L.layerGroup().addTo(map);
-const arrowLayer = L.layerGroup().addTo(map);
-let gaccLayer = null, wfLayer = L.layerGroup(), rxLayer = L.layerGroup();
-let selBox = null;
+map.createPane("labels"); map.getPane("labels").style.zIndex = 450; map.getPane("labels").style.pointerEvents = "none";
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  { pane: "labels", maxZoom: 16, opacity: 0.85 }).addTo(map);
 
-const ARROW_SVG = '<svg viewBox="0 0 20 20"><path d="M10 1 L16 11 H12 V19 H8 V11 H4 Z" fill="#111" stroke="#fff" stroke-width="1.2"/></svg>';
+let gaccLayer = null, wfLayer = L.layerGroup(), rxLayer = L.layerGroup(), selMarker = null;
 
-function buildGrid() {
-  const step = S.fc.grid.step, h = step / 2;
-  S.fc.points.forEach((p, i) => {
-    const rect = L.rectangle([[p.lat - h, p.lon - h], [p.lat + h, p.lon + h]],
-      { renderer: gridRenderer, pane: "grid", stroke: false, fillOpacity: S.opacity, fillColor: "#999" });
-    rect.bindTooltip(() => cellTip(i), { sticky: true, className: "cell", direction: "top", offset: [0, -6] });
-    rect.on("click", () => selectPoint(i));
-    rect.addTo(gridLayer);
-    S.cells.push(rect);
-    const m = L.marker([p.lat, p.lon], { pane: "arrows", interactive: false, keyboard: false,
-      icon: L.divIcon({ className: "", html: '<div class="arr">' + ARROW_SVG + "</div>", iconSize: [18, 18], iconAnchor: [9, 9] }) });
-    m.addTo(arrowLayer);
-    S.arrows.push(m);
-  });
+// Smooth field layer: bilinear interpolation of the grid at screen resolution, plus wind arrows.
+const SmoothLayer = L.Layer.extend({
+  onAdd(m) {
+    this._fill = L.DomUtil.create("canvas", "smooth-layer");
+    this._arr = L.DomUtil.create("canvas", "smooth-layer");
+    m.getPane("grid").appendChild(this._fill);
+    m.getPane("grid").appendChild(this._arr);
+    m.on("moveend zoomend resize viewreset", this.redraw, this);
+    m.on("zoomstart", this._hide, this);
+    this.redraw();
+  },
+  onRemove(m) {
+    this._fill.remove(); this._arr.remove();
+    m.off("moveend zoomend resize viewreset", this.redraw, this);
+    m.off("zoomstart", this._hide, this);
+  },
+  _hide() { this._fill.style.visibility = "hidden"; this._arr.style.visibility = "hidden"; },
+  redraw() {
+    if (!this._map || !S.M) return;
+    const m = this._map, size = m.getSize();
+    const tl = m.containerPointToLayerPoint([0, 0]);
+    for (const c of [this._fill, this._arr]) { L.DomUtil.setPosition(c, tl); c.style.width = size.x + "px"; c.style.height = size.y + "px"; c.style.visibility = "visible"; }
+    this._fill.style.opacity = S.opacity;
+    const D = LAYERS[S.layer];
+    const ready = D.need.every(f => S.F[f]) && (S.layer !== "vent" || S.F.vi);
+    const fctx = this._fill.getContext("2d"), actx = this._arr.getContext("2d");
+    const ds = 2, W = Math.ceil(size.x / ds), H = Math.ceil(size.y / ds);
+    this._fill.width = W; this._fill.height = H;
+    const dpr = window.devicePixelRatio || 1;
+    this._arr.width = Math.round(size.x * dpr); this._arr.height = Math.round(size.y * dpr);
+    if (!ready) return;
+    const G = layerGrid(S.layer, S.t), g = S.M.grid, nx = g.nx, ny = g.ny;
+    const col = buildColorizerCached(S.layer);
+    const gx = new Float32Array(W), gy = new Float32Array(H);
+    for (let x = 0; x < W; x++) gx[x] = (m.containerPointToLatLng([x * ds + ds / 2, 0]).lng - g.west) / g.step;
+    for (let y = 0; y < H; y++) gy[y] = (g.north - m.containerPointToLatLng([0, y * ds + ds / 2]).lat) / g.step;
+    const img = fctx.createImageData(W, H), px = img.data;
+    for (let y = 0; y < H; y++) {
+      const fy = gy[y]; if (fy < 0 || fy > ny - 1) continue;
+      const r0 = Math.floor(fy), r1 = Math.min(r0 + 1, ny - 1), wy = fy - r0;
+      for (let x = 0; x < W; x++) {
+        const fx = gx[x]; if (fx < 0 || fx > nx - 1) continue;
+        const c0 = Math.floor(fx), c1 = Math.min(c0 + 1, nx - 1), wx = fx - c0;
+        const a = G[r0 * nx + c0], b = G[r0 * nx + c1], c = G[r1 * nx + c0], d = G[r1 * nx + c1];
+        let s = 0, w = 0, ww;
+        if (a === a) { ww = (1 - wx) * (1 - wy); s += a * ww; w += ww; }
+        if (b === b) { ww = wx * (1 - wy); s += b * ww; w += ww; }
+        if (c === c) { ww = (1 - wx) * wy; s += c * ww; w += ww; }
+        if (d === d) { ww = wx * wy; s += d * ww; w += ww; }
+        if (w < 0.5) continue;
+        const rgba = col(s / w), o = (y * W + x) * 4;
+        px[o] = rgba[0]; px[o + 1] = rgba[1]; px[o + 2] = rgba[2]; px[o + 3] = rgba[3];
+      }
+    }
+    fctx.putImageData(img, 0, 0);
+    this._drawArrows(actx, dpr);
+  },
+  _drawArrows(ctx, dpr) {
+    const mode = LAYERS[S.layer].arrows;
+    if (!$("arrowsChk").checked || !mode) return;
+    const sf = mode === "ws" ? "ws" : "tw", df = mode === "ws" ? "wd" : "twd";
+    if (!S.F[sf] || !S.F[df]) { loadFields([sf, df]).then(() => this.redraw()); return; }
+    const m = this._map, g = S.M.grid;
+    const p0 = m.latLngToContainerPoint([34, -108]), p1 = m.latLngToContainerPoint([34, -108 + g.step]);
+    const cellPx = Math.max(1, p1.x - p0.x), stride = Math.max(1, Math.ceil(46 / cellPx));
+    const b = m.getBounds();
+    const r0 = Math.max(0, Math.floor((g.north - b.getNorth()) / g.step)), r1 = Math.min(g.ny - 1, Math.ceil((g.north - b.getSouth()) / g.step));
+    const c0 = Math.max(0, Math.floor((b.getWest() - g.west) / g.step)), c1 = Math.min(g.nx - 1, Math.ceil((b.getEast() - g.west) / g.step));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineJoin = "round";
+    for (let r = Math.floor(r0 / stride) * stride; r <= r1; r += stride) {
+      for (let c = Math.floor(c0 / stride) * stride; c <= c1; c += stride) {
+        const cell = r * g.nx + c, s = fv(sf, S.t, cell), d = fv(df, S.t, cell);
+        if (Number.isNaN(s) || Number.isNaN(d)) continue;
+        const p = m.latLngToContainerPoint([g.north - r * g.step, g.west + c * g.step]);
+        const len = s < 2 ? 6 : Math.min(26, 10 + s * 0.6);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(((d + 180) % 360) * Math.PI / 180);
+        ctx.beginPath();
+        ctx.moveTo(0, len / 2); ctx.lineTo(0, -len / 2 + 5);
+        ctx.moveTo(-4.5, -len / 2 + 6); ctx.lineTo(0, -len / 2); ctx.lineTo(4.5, -len / 2 + 6);
+        ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 4; ctx.stroke();
+        ctx.strokeStyle = "#1b1b1b"; ctx.lineWidth = 1.8; ctx.stroke();
+        ctx.restore();
+      }
+    }
+  },
+});
+const colorizers = {};
+function buildColorizerCached(L) { return colorizers[L] || (colorizers[L] = buildColorizer(L)); }
+const smooth = new SmoothLayer();
+
+// ================================================================= hover readout
+function cellAt(latlng) {
+  const g = S.M.grid;
+  const r = Math.round((g.north - latlng.lat) / g.step), c = Math.round((latlng.lng - g.west) / g.step);
+  if (r < 0 || c < 0 || r >= g.ny || c >= g.nx) return null;
+  return { r, c, cell: r * g.nx + c, lat: g.north - r * g.step, lon: g.west + c * g.step };
 }
-
-function cellTip(i) {
-  const p = S.fc.points[i], t = S.t;
-  const vc = ventCat(p.vi[t]);
-  const fr = failReason(p, t);
-  return `<b>${p.lat.toFixed(2)}°, ${p.lon.toFixed(2)}°</b> · ${Math.round(p.elev * 3.28084).toLocaleString()} ft<br>
-    ${LAYERS[S.layer].label}: <b>${layerText(S.layer, layerValue(S.layer, p, t))}</b><br>
-    Vent: ${vc ? vc.name : "—"} (${k(p.vi[t])}) · MH ${num(p.mh[t])} ft · TW ${compass(p.twd[t])} ${num(p.tw[t])} kt<br>
-    Precip ${num(p.pop[t])}% · Wind ${compass(p.wd[t])} ${num(p.ws[t])} G${num(p.wg[t])} mph · RH ${num(p.rh[t])}%<br>
-    ${fr ? "✗ Burn criteria: " + fr : "✓ Meets burn criteria"}<br><span style="color:#666">Click for full forecast</span>`;
+function layerText(L, v) {
+  if (v == null || Number.isNaN(v)) return "—";
+  switch (L) {
+    case "vent": return `${ventCat(v).name} · ${Math.round(v).toLocaleString()} kt-ft`;
+    case "burn": return v >= 0.5 ? "Meets criteria" : "Does not meet";
+    case "burnhrs": return `${Math.round(v)} h`;
+    case "qpf24": return `${v.toFixed(2)} in`;
+    case "mh": return `${Math.round(v).toLocaleString()} ft AGL`;
+    default: return `${Math.round(v * 10) / 10} ${LAYERS[L].units || ""}`;
+  }
 }
+map.on("mousemove", e => {
+  const h = $("hover");
+  if (!S.M) return;
+  const ci = cellAt(e.latlng);
+  const G = LAYERS[S.layer].need.every(f => S.F[f]) ? layerGrid(S.layer, S.t) : null;
+  if (!ci || !G || Number.isNaN(G[ci.cell])) { h.style.display = "none"; return; }
+  const t = S.t, c = ci.cell, have = f => !!S.F[f];
+  let html = `<b>${LAYERS[S.layer].label}:</b> ${layerText(S.layer, G[c])}`;
+  if (have("vi")) { const vc = ventCat(fv("vi", t, c)); html += `<br>Vent ${vc ? vc.name : "—"} (${k(fv("vi", t, c))})`; }
+  if (have("mh") && have("tw")) html += ` · MH ${num(fv("mh", t, c))} ft · TW ${compass(fv("twd", t, c))} ${num(fv("tw", t, c))} kt`;
+  if (have("pop")) html += `<br>Precip ${num(fv("pop", t, c))}%`;
+  if (have("ws")) html += ` · Wind ${compass(fv("wd", t, c))} ${num(fv("ws", t, c))} G${num(fv("wg", t, c))} mph`;
+  if (have("rh")) html += ` · RH ${num(fv("rh", t, c))}%`;
+  if (BURN_FIELDS.every(have)) { const fr = failReason(t, c); html += `<br>${fr ? "✗ Burn criteria: " + fr : "✓ Meets burn criteria"}`; }
+  html += `<br><span class="small">Click for the full forecast here</span>`;
+  h.innerHTML = html;
+  const cp = e.containerPoint, ms = map.getSize();
+  h.style.display = "block";
+  h.style.left = Math.min(cp.x + 14, ms.x - h.offsetWidth - 6) + "px";
+  h.style.top = Math.max(4, cp.y - h.offsetHeight - 10) + "px";
+});
+map.on("mouseout", () => { $("hover").style.display = "none"; });
+map.on("click", e => { if (S.M) { const ci = cellAt(e.latlng); if (ci) selectPoint(ci); } });
 
-function renderGrid() {
-  if (!S.fc) return;
-  const L = S.layer;
-  S.fc.points.forEach((p, i) => {
-    const c = layerColor(L, layerValue(L, p, S.t));
-    S.cells[i].setStyle({ fillColor: c || "#000", fillOpacity: c ? S.opacity : 0 });
-  });
-  renderArrows();
-  renderLegend();
-}
-
-function renderArrows() {
-  const mode = LAYERS[S.layer].arrows;
-  const show = $("arrowsChk").checked && mode;
-  S.fc.points.forEach((p, i) => {
-    const el = S.arrows[i].getElement(); if (!el) return;
-    const d = mode === "ws" ? p.wd[S.t] : p.twd[S.t];
-    const s = mode === "ws" ? p.ws[S.t] : p.tw[S.t];
-    if (!show || d == null || s == null) { el.style.display = "none"; return; }
-    el.style.display = "";
-    const a = el.firstChild;
-    a.style.transform = `rotate(${(d + 180) % 360}deg) scale(${s < 3 ? 0.55 : Math.min(1.25, 0.75 + s / 40)})`;
-    a.style.opacity = s < 3 ? 0.45 : 0.9;
-  });
-}
-
+// ================================================================= legend
 function renderLegend() {
-  const L = S.layer, el = $("legend");
-  let h = `<div style="font-weight:600;margin-bottom:2px">${LAYERS[L].label}</div>`;
-  if (L === "vent") {
+  const L = S.layer, D = LAYERS[L], el = $("legend");
+  let h = `<div style="font-weight:600;margin-bottom:2px">${D.label}</div>`;
+  if (D.mode === "class") {
     VENT.forEach((v, i) => {
-      const hi = VENT[i + 1] ? `${k(v.min === -Infinity ? 0 : v.min)}–${k(VENT[i + 1].min)}` : `≥ ${k(v.min)}`;
-      h += `<div><span class="sw" style="background:${v.color}"></span>${v.name} <span class="small">${hi} kt-ft</span></div>`;
+      const rng = VENT[i + 1] ? `${k(Math.max(0, v.min))}–${k(VENT[i + 1].min)}` : `≥ ${k(v.min)}`;
+      h += `<div><span class="sw" style="background:${v.color}"></span>${v.name} <span class="small">${rng} kt-ft</span></div>`;
     });
     h += `<div class="small">Good or better is the usual NM ignition threshold.</div>`;
-  } else if (L === "burn") {
-    h += `<div><span class="sw" style="background:#2e9e44"></span>Meets all criteria</div><div><span class="sw" style="background:#8a8f93"></span>Fails at least one</div>`;
+  } else if (D.mode === "burn") {
+    h += `<div><span class="sw" style="background:#2e9e44"></span>Meets all criteria</div><div><span class="sw" style="background:rgba(120,124,128,.45)"></span>Fails at least one</div>`;
   } else {
-    const D = LAYERS[L];
-    D.breaks.forEach((b, i) => {
-      const nx = D.breaks[i + 1];
-      const lab = nx == null ? `≥ ${b}` : (D.units === "h" ? `${b}–${nx - 1}` : `${b}–${nx}`);
-      h += `<div><span class="sw" style="background:${D.colors[i] || "transparent"}"></span>${lab} ${D.units || ""}</div>`;
-    });
+    const st = D.stops, lo = st[0][0], hi = st[st.length - 1][0];
+    const grad = st.map(s => `${s[1] || "rgba(255,255,255,0)"} ${((s[0] - lo) / (hi - lo) * 100).toFixed(1)}%`).join(",");
+    h += `<div class="ramp" style="background:linear-gradient(90deg,${grad})"></div><div class="ticks">` +
+      D.ticks.map(t => `<span style="left:${Math.min(97, Math.max(3, (t - lo) / (hi - lo) * 100))}%">${t}</span>`).join("") +
+      `</div><div class="small">${D.units}</div>`;
   }
-  if (LAYERS[L].arrows && $("arrowsChk").checked)
-    h += `<div class="small" style="margin-top:4px">Arrows: ${LAYERS[L].arrows === "ws" ? "10-m wind" : "transport wind"}, pointing downwind.</div>`;
+  if (D.arrows && $("arrowsChk").checked) h += `<div class="small" style="margin-top:4px">Arrows: ${D.arrows === "ws" ? "10-m wind" : "transport wind"}, pointing downwind; longer = stronger.</div>`;
   h += `<div style="margin-top:6px"><span class="sw" style="background:rgba(192,57,43,.35);border-color:#c0392b"></span>Wildfire perimeter</div>
         <div><span class="sw" style="background:rgba(230,126,34,.3);border:1.5px dashed #e67e22"></span>Prescribed fire perimeter</div>`;
   el.innerHTML = h;
 }
 
-// ---------------------------------------------------------------- time
+// ================================================================= rendering / time
+async function render() {
+  if (!S.M) return;
+  const need = LAYERS[S.layer].need;
+  if (!need.every(f => S.F[f])) { smooth.redraw(); await loadFields(need); }
+  smooth.redraw();
+  renderLegend();
+}
+
 function setTime(t) {
+  if (!S.N) return;
   S.t = Math.max(0, Math.min(S.N - 1, t));
   $("tSlider").value = S.t;
   const e = S.times[S.t];
@@ -408,46 +561,34 @@ function setTime(t) {
   $("lblNM").textContent = `New Mexico · Mountain (${tzAbbr(e, TZ.NM)})`;
   $("lblAZ").textContent = `Arizona · ${tzAbbr(e, TZ.AZ)} (no DST)`;
   const same = offsetMin(e, TZ.NM) === offsetMin(e, TZ.AZ);
-  $("tznote").textContent = (same
-    ? "NM is on standard time, so NM and AZ clocks match at this hour."
-    : "NM is on daylight time: Arizona is 1 hour behind NM.")
-    + " The Navajo Nation (incl. its AZ portion) observes daylight time — use the NM clock there.";
-  renderGrid();
-  if (S.point != null) { updateCharts(); renderDayButtons(); }
+  $("tznote").textContent = (same ? "NM is on standard time, so NM and AZ clocks match at this hour."
+    : "NM is on daylight time: Arizona is 1 hour behind NM.") + " The Navajo Nation (incl. its AZ portion) observes daylight time — use the NM clock there.";
+  render();
+  if (S.point) S.charts.forEach(c => c.update("none"));
   document.querySelectorAll("#days button").forEach(b => b.classList.toggle("on", b.dataset.key === S.dayKeys[S.t]));
 }
 
 function recomputeLocal() {
   S.dayKeys = S.times.map(e => dayKey(e, pTZ()));
   S.localHours = S.times.map(e => localHour(e, pTZ()));
+  S.cache.clear();
   $("clockNM").classList.toggle("primary", S.primary === "NM");
   $("clockAZ").classList.toggle("primary", S.primary === "AZ");
   $("tzNM").classList.toggle("on", S.primary === "NM");
   $("tzAZ").classList.toggle("on", S.primary === "AZ");
-  renderDayButtons();
-}
-
-function renderDayButtons() {
-  const seen = []; S.dayKeys.forEach((d, i) => { if (!seen.find(x => x.key === d)) seen.push({ key: d, i }); });
-  $("days").innerHTML = seen.map(s => {
-    const lbl = fmt(S.times[s.i], pTZ(), { weekday: "short", month: "numeric", day: "numeric" });
-    return `<button data-key="${s.key}">${lbl}</button>`;
-  }).join("");
+  const seen = [];
+  S.dayKeys.forEach((d, i) => { if (!seen.find(x => x.key === d)) seen.push({ key: d, i }); });
+  $("days").innerHTML = seen.map(s => `<button data-key="${s.key}">${fmt(S.times[s.i], pTZ(), { weekday: "short", month: "numeric", day: "numeric" })}</button>`).join("");
   $("days").querySelectorAll("button").forEach(b => b.onclick = () => {
     let best = null;
     S.times.forEach((e, i) => { if (S.dayKeys[i] === b.dataset.key && (best == null || Math.abs(S.localHours[i] - 13) < Math.abs(S.localHours[best] - 13))) best = i; });
     if (best != null) setTime(best);
   });
-  document.querySelectorAll("#days button").forEach(b => b.classList.toggle("on", b.dataset.key === S.dayKeys[S.t]));
 }
+function nowIndex() { const now = Date.now() / 1000; const i = S.times.findIndex(e => e >= now - 1800); return i < 0 ? 0 : i; }
+function nearestIndex(epoch) { let b = 0; S.times.forEach((e, i) => { if (Math.abs(e - epoch) < Math.abs(S.times[b] - epoch)) b = i; }); return b; }
 
-function nowIndex() {
-  const now = Date.now() / 1000;
-  let i = S.times.findIndex(e => e >= now - 1800);
-  return i < 0 ? 0 : i;
-}
-
-// ---------------------------------------------------------------- point detail
+// ================================================================= point detail
 function pointInRing(x, y, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -466,72 +607,73 @@ function gaccAt(lat, lon) {
   return null;
 }
 
-function selectPoint(i) {
-  S.point = i;
-  const p = S.fc.points[i], h = S.fc.grid.step / 2;
-  if (selBox) map.removeLayer(selBox);
-  selBox = L.rectangle([[p.lat - h, p.lon - h], [p.lat + h, p.lon + h]],
-    { pane: "perims", color: "#111", weight: 2.5, dashArray: "5 4", fill: false, interactive: false }).addTo(map);
+async function selectPoint(ci) {
+  S.point = ci;
+  if (selMarker) map.removeLayer(selMarker);
+  selMarker = L.circleMarker([ci.lat, ci.lon], { pane: "perims", radius: 8, color: "#111", weight: 2.5, fill: false, dashArray: "3 3", interactive: false }).addTo(map);
   $("detail").classList.add("open");
-  buildDetail();
+  $("detail").innerHTML = `<div class="small">Loading forecast for this point…</div>`;
   setTimeout(() => map.invalidateSize(), 50);
+  await loadFields(allFields());
+  buildDetail();
 }
 
-function windows(p) {
+function windows(c) {
   const out = []; let cur = null;
   for (let t = 0; t < S.N; t++) {
-    if (meets(p, t)) {
-      if (cur && cur.end === t - 1) { cur.end = t; cur.peak = Math.max(cur.peak, p.vi[t]); }
-      else { cur = { start: t, end: t, peak: p.vi[t] }; out.push(cur); }
+    if (meets(t, c)) {
+      if (cur && cur.end === t - 1) { cur.end = t; cur.peak = Math.max(cur.peak, fv("vi", t, c)); }
+      else { cur = { start: t, end: t, peak: fv("vi", t, c) }; out.push(cur); }
     }
   }
   return out;
 }
-
-function dailyRows(p) {
+function dailyRows(c) {
   const days = {};
   for (let t = 0; t < S.N; t++) {
-    const d = S.dayKeys[t];
-    const r = days[d] || (days[d] = { t0: t, hours: 0, maxVi: null, maxViT: null, good: 0, pop: 0, qpf: 0, ws: 0, wg: 0, rh: 101, burn: 0 });
-    r.hours++;
-    if (p.vi[t] != null && (r.maxVi == null || p.vi[t] > r.maxVi)) { r.maxVi = p.vi[t]; r.maxViT = t; }
-    if (p.vi[t] >= 60000) r.good++;
-    r.pop = Math.max(r.pop, p.pop[t] || 0);
-    r.qpf += p.qpf[t] || 0;
-    r.ws = Math.max(r.ws, p.ws[t] || 0);
-    r.wg = Math.max(r.wg, p.wg[t] || 0);
-    if (p.rh[t] != null) r.rh = Math.min(r.rh, p.rh[t]);
-    if (meets(p, t)) r.burn++;
+    const d = S.dayKeys[t], du = S.dur[t];
+    const r = days[d] || (days[d] = { t0: t, span: 0, maxVi: null, maxViT: null, good: 0, pop: 0, qpf: 0, ws: 0, wg: 0, rh: 101, burn: 0 });
+    r.span += du;
+    const vi = fv("vi", t, c);
+    if (!Number.isNaN(vi) && (r.maxVi == null || vi > r.maxVi)) { r.maxVi = vi; r.maxViT = t; }
+    if (vi >= 60000) r.good += du;
+    r.pop = Math.max(r.pop, fv("pop", t, c) || 0);
+    r.qpf += fv("qpf", t, c) || 0;
+    r.ws = Math.max(r.ws, fv("ws", t, c) || 0);
+    r.wg = Math.max(r.wg, fv("wg", t, c) || 0);
+    const rh = fv("rh", t, c); if (!Number.isNaN(rh)) r.rh = Math.min(r.rh, rh);
+    if (meets(t, c)) r.burn += du;
   }
   return Object.values(days);
 }
 
 function buildDetail() {
-  const i = S.point, p = S.fc.points[i];
-  const g = gaccAt(p.lat, p.lon);
+  const ci = S.point, c = ci.cell, g = gaccAt(ci.lat, ci.lon);
   const tz = pTZ(), otz = TZ[otherKey()];
-  const wins = windows(p);
+  if (Number.isNaN(fv("vi", 0, c)) && Number.isNaN(fv("ws", 0, c))) {
+    $("detail").innerHTML = `<button class="closebtn" id="closeDetail">Close ✕</button><div class="small">No NBM data at this location (outside the NBM CONUS grid).</div>`;
+    $("closeDetail").onclick = closeDetail; return;
+  }
+  const wins = windows(c);
   const winHtml = wins.length ? wins.map(w => {
-    const a = S.times[w.start], b = S.times[w.end] + 3600;
+    const a = S.times[w.start], b = S.times[w.end] + S.dur[w.end] * 3600;
     const same = offsetMin(a, TZ.NM) === offsetMin(a, TZ.AZ);
     const prim = `${fmt(a, tz, { weekday: "short", month: "short", day: "numeric" })} · ${shortT(a, tz)} – ${shortT(b, tz)} ${tzAbbr(a, tz)}`;
     const alt = same ? " (same clock time in NM and AZ)" : ` (${shortT(a, otz)} – ${shortT(b, otz)} ${tzAbbr(a, otz)} ${otherKey() === "AZ" ? "Arizona" : "New Mexico"})`;
-    const vc = ventCat(w.peak);
-    return `<div class="win"><b>${prim}</b>${alt} · ${w.end - w.start + 1} h · peak vent <span class="pill" style="background:${vc.color}">${vc.name}</span> ${k(w.peak)}</div>`;
-  }).join("") : `<div class="small">No hours in the next ${S.N} h meet all of your criteria at this grid point. Try relaxing a criterion (the failing reason shows when you hover the map).</div>`;
-
-  const rows = dailyRows(p).map(r => {
+    const hrs = Math.round((b - a) / 3600), vc = ventCat(w.peak);
+    return `<div class="win"><b>${prim}</b>${alt} · ${hrs} h · peak vent <span class="pill" style="background:${vc.color}">${vc.name}</span> ${k(w.peak)}</div>`;
+  }).join("") : `<div class="small">No hours in this forecast meet all of your criteria here. Hover the map to see which check fails, or relax a criterion.</div>`;
+  const rows = dailyRows(c).map(r => {
     const vc = ventCat(r.maxVi);
-    return `<tr><td>${fmt(S.times[r.t0], tz, { weekday: "short", month: "short", day: "numeric" })}${r.hours < 24 ? ' <span class="small">(' + r.hours + " h)</span>" : ""}</td>
+    return `<tr><td>${fmt(S.times[r.t0], tz, { weekday: "short", month: "short", day: "numeric" })}${r.span < 23 ? ` <span class="small">(${r.span} h)</span>` : ""}</td>
       <td>${vc ? `<span class="pill" style="background:${vc.color}">${vc.name}</span> ${k(r.maxVi)} @ ${shortT(S.times[r.maxViT], tz)}` : "—"}</td>
-      <td>${r.good}</td><td>${r.pop}%</td><td>${r.qpf.toFixed(2)}"</td><td>${r.ws} / G${r.wg}</td><td>${r.rh > 100 ? "—" : r.rh + "%"}</td>
-      <td><b>${r.burn}</b></td></tr>`;
+      <td>${r.good}</td><td>${Math.round(r.pop)}%</td><td>${r.qpf.toFixed(2)}"</td><td>${Math.round(r.ws)} / G${Math.round(r.wg)}</td>
+      <td>${r.rh > 100 ? "—" : Math.round(r.rh) + "%"}</td><td><b>${r.burn}</b></td></tr>`;
   }).join("");
-
   $("detail").innerHTML = `
     <button class="closebtn" id="closeDetail">Close ✕</button>
-    <h3>Grid point ${p.lat.toFixed(2)}°N, ${Math.abs(p.lon).toFixed(2)}°W · ${Math.round(p.elev * 3.28084).toLocaleString()} ft model elevation${g ? " · " + g.name : ""}</h3>
-    <div class="small">Times shown in ${S.primary === "NM" ? "New Mexico (Mountain)" : "Arizona (MST)"} time; switch in the sidebar. Click a chart to jump the map to that hour. Green shading = hours meeting your burn criteria.</div>
+    <h3>${ci.lat.toFixed(2)}°N, ${Math.abs(ci.lon).toFixed(2)}°W${g ? " · " + g.name : ""}</h3>
+    <div class="small">Times in ${S.primary === "NM" ? "New Mexico (Mountain)" : "Arizona (MST)"} time; switch in the sidebar. Click a chart to move the map to that time. Green shading = hours meeting your burn criteria.</div>
     <div class="charts">
       <div><b>Smoke dispersion</b><div class="chartbox"><canvas id="ch1"></canvas></div></div>
       <div><b>Precipitation &amp; wind</b><div class="chartbox"><canvas id="ch2"></canvas></div></div>
@@ -541,70 +683,84 @@ function buildDetail() {
     <div style="margin-top:10px"><b>Daily summary</b></div>
     <table><thead><tr><th>Day</th><th>Max ventilation</th><th>Hrs ≥ Good</th><th>Max precip chance</th><th>Precip total</th><th>Max wind / gust (mph)</th><th>Min RH</th><th>Burn hrs</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
-  $("closeDetail").onclick = () => {
-    $("detail").classList.remove("open"); S.point = null;
-    if (selBox) { map.removeLayer(selBox); selBox = null; }
-    S.charts.forEach(c => c.destroy()); S.charts = [];
-    setTimeout(() => map.invalidateSize(), 50);
-  };
-  buildCharts(p);
+  $("closeDetail").onclick = closeDetail;
+  buildCharts(c);
+}
+function closeDetail() {
+  $("detail").classList.remove("open"); S.point = null;
+  if (selMarker) { map.removeLayer(selMarker); selMarker = null; }
+  S.charts.forEach(ch => ch.destroy()); S.charts = [];
+  setTimeout(() => map.invalidateSize(), 50);
 }
 
 const shadePlugin = {
   id: "shade",
   beforeDatasetsDraw(chart) {
-    if (S.point == null) return;
-    const p = S.fc.points[S.point], { ctx, chartArea: a, scales: { x } } = chart;
-    const w = (a.right - a.left) / S.N;
+    if (!S.point) return;
+    const c = S.point.cell, { ctx, chartArea: a, scales: { x } } = chart;
     ctx.save();
-    ctx.fillStyle = "rgba(46,158,68,0.16)";
-    for (let t = 0; t < S.N; t++) if (meets(p, t)) ctx.fillRect(x.getPixelForValue(t) - w / 2, a.top, w, a.bottom - a.top);
-    // day separators
-    ctx.strokeStyle = "rgba(0,0,0,0.15)";
-    for (let t = 1; t < S.N; t++) if (S.dayKeys[t] !== S.dayKeys[t - 1]) {
-      const xx = x.getPixelForValue(t) - w / 2; ctx.beginPath(); ctx.moveTo(xx, a.top); ctx.lineTo(xx, a.bottom); ctx.stroke();
+    ctx.fillStyle = "rgba(46,158,68,0.17)";
+    for (let t = 0; t < S.N; t++) if (meets(t, c)) {
+      const x0 = x.getPixelForValue(S.times[t]), x1 = x.getPixelForValue(S.times[t] + S.dur[t] * 3600);
+      ctx.fillRect(Math.max(a.left, x0), a.top, Math.min(a.right, x1) - Math.max(a.left, x0), a.bottom - a.top);
     }
-    const xs = x.getPixelForValue(S.t);
-    ctx.strokeStyle = "#c4561b"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(xs, a.top); ctx.lineTo(xs, a.bottom); ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    for (let t = 1; t < S.N; t++) if (S.dayKeys[t] !== S.dayKeys[t - 1]) {
+      const xx = x.getPixelForValue(S.times[t]); ctx.beginPath(); ctx.moveTo(xx, a.top); ctx.lineTo(xx, a.bottom); ctx.stroke();
+    }
+    const xs = x.getPixelForValue(S.times[S.t]);
+    ctx.strokeStyle = "#c4561b"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xs, a.top); ctx.lineTo(xs, a.bottom); ctx.stroke();
+    ctx.restore();
+  },
+};
+const ventBands = {
+  id: "ventBands",
+  beforeDraw(chart) {
+    const { ctx, chartArea: a, scales: { y } } = chart;
+    ctx.save();
+    VENT.forEach((v, i) => {
+      const lo = Math.max(0, v.min) / 1000, hi = VENT[i + 1] ? VENT[i + 1].min / 1000 : y.max;
+      const y0 = y.getPixelForValue(Math.min(hi, y.max)), y1 = y.getPixelForValue(lo);
+      if (y1 <= a.top || y0 >= a.bottom) return;
+      ctx.fillStyle = v.color + "22";
+      ctx.fillRect(a.left, Math.max(a.top, y0), a.right - a.left, Math.min(a.bottom, y1) - Math.max(a.top, y0));
+    });
     ctx.restore();
   },
 };
 
-function buildCharts(p) {
-  S.charts.forEach(c => c.destroy()); S.charts = [];
-  const tz = pTZ();
-  const labels = S.times.map(e => fmt(e, tz, { weekday: "short", hour: "numeric" }));
+function buildCharts(c) {
+  S.charts.forEach(ch => ch.destroy()); S.charts = [];
+  const tz = pTZ(), series = f => S.times.map((e, t) => ({ x: e, y: Number.isNaN(fv(f, t, c)) ? null : fv(f, t, c) }));
   const common = {
-    responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
-    onClick: (ev, els, chart) => { const v = chart.scales.x.getValueForPixel(ev.x); if (v != null) setTime(Math.round(v)); },
+    responsive: true, maintainAspectRatio: false, animation: false, parsing: false, interaction: { mode: "nearest", axis: "x", intersect: false },
+    onClick: (ev, els, chart) => { const v = chart.scales.x.getValueForPixel(ev.x); if (v != null) setTime(nearestIndex(v)); },
     plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
-      tooltip: { callbacks: { title: items => bothTimes(S.times[items[0].dataIndex]) } } },
-    scales: { x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } } },
+      tooltip: { callbacks: { title: items => bothTimes(items[0].parsed.x) } } },
+    scales: { x: { type: "linear", min: S.times[0], max: S.times[S.N - 1],
+      ticks: { stepSize: 6 * 3600, maxRotation: 0, autoSkip: true, maxTicksLimit: 9, font: { size: 10 },
+        callback: v => fmt(v, tz, { weekday: "short", hour: "numeric" }) }, grid: { display: false } } },
   };
   S.charts.push(new Chart($("ch1"), {
-    data: { labels, datasets: [
-      { type: "bar", label: "Ventilation (k kt-ft)", data: p.vi.map(v => v == null ? null : v / 1000),
-        backgroundColor: p.vi.map(v => ventCat(v)?.color || "#ccc"), yAxisID: "y", barPercentage: 1, categoryPercentage: 1, order: 2 },
-      { type: "line", label: "Mixing height (k ft AGL)", data: p.mh.map(v => v == null ? null : v / 1000),
-        borderColor: "#222", borderWidth: 1.5, pointRadius: 0, yAxisID: "y2", order: 1 },
+    type: "line",
+    data: { datasets: [
+      { label: "Ventilation (k kt-ft)", data: series("vi").map(p => ({ x: p.x, y: p.y == null ? null : p.y / 1000 })), yAxisID: "y",
+        borderWidth: 2.2, pointRadius: 0, segment: { borderColor: ctx => (ventCat((ctx.p1.parsed.y || 0) * 1000) || VENT[0]).color }, borderColor: "#2e9e44" },
+      { label: "Mixing height (k ft AGL)", data: series("mh").map(p => ({ x: p.x, y: p.y == null ? null : p.y / 1000 })), yAxisID: "y2",
+        borderColor: "#222", borderDash: [5, 3], borderWidth: 1.4, pointRadius: 0 },
     ] },
     options: { ...common, scales: { ...common.scales,
-      y: { title: { display: true, text: "k kt-ft" }, beginAtZero: true },
-      y2: { position: "right", title: { display: true, text: "k ft" }, beginAtZero: true, grid: { display: false } } } },
-    plugins: [shadePlugin, {
-      id: "ventlines", afterDatasetsDraw(c) {
-        const { ctx, chartArea: a, scales: { y } } = c; ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = "rgba(0,0,0,.35)";
-        [40, 60, 100, 150].forEach(v => { const yy = y.getPixelForValue(v); if (yy > a.top && yy < a.bottom) { ctx.beginPath(); ctx.moveTo(a.left, yy); ctx.lineTo(a.right, yy); ctx.stroke(); } });
-        ctx.restore();
-      } }],
+      y: { title: { display: true, text: "Ventilation, k kt-ft" }, beginAtZero: true, suggestedMax: 160 },
+      y2: { position: "right", title: { display: true, text: "Mixing ht, k ft" }, beginAtZero: true, grid: { display: false } } } },
+    plugins: [ventBands, shadePlugin],
   }));
   S.charts.push(new Chart($("ch2"), {
-    data: { labels, datasets: [
-      { type: "bar", label: "Precip chance (%)", data: p.pop, backgroundColor: "rgba(33,113,181,.45)", yAxisID: "y2", barPercentage: 1, categoryPercentage: 1, order: 3 },
-      { type: "line", label: "10-m wind (mph)", data: p.ws, borderColor: "#d94801", borderWidth: 1.5, pointRadius: 0, yAxisID: "y", order: 1 },
-      { type: "line", label: "Gust (mph)", data: p.wg, borderColor: "#d94801", borderDash: [4, 3], borderWidth: 1, pointRadius: 0, yAxisID: "y", order: 1 },
-      { type: "line", label: "Transport wind (kt)", data: p.tw, borderColor: "#444", borderWidth: 1.5, pointRadius: 0, yAxisID: "y", order: 2 },
+    type: "line",
+    data: { datasets: [
+      { label: "Precip chance (%)", data: series("pop"), yAxisID: "y2", borderColor: "rgba(33,113,181,.9)", backgroundColor: "rgba(33,113,181,.22)", fill: "origin", borderWidth: 1, pointRadius: 0, stepped: "after" },
+      { label: "10-m wind (mph)", data: series("ws"), yAxisID: "y", borderColor: "#d94801", borderWidth: 1.6, pointRadius: 0 },
+      { label: "Gust (mph)", data: series("wg"), yAxisID: "y", borderColor: "#d94801", borderDash: [4, 3], borderWidth: 1, pointRadius: 0 },
+      { label: "Transport wind (kt)", data: series("tw"), yAxisID: "y", borderColor: "#444", borderWidth: 1.6, pointRadius: 0 },
     ] },
     options: { ...common, scales: { ...common.scales,
       y: { title: { display: true, text: "mph / kt" }, beginAtZero: true },
@@ -612,13 +768,12 @@ function buildCharts(p) {
     plugins: [shadePlugin],
   }));
 }
-function updateCharts() { S.charts.forEach(c => c.update("none")); }
 
-// ---------------------------------------------------------------- overlays
+// ================================================================= overlays
 function epochDate(ms, tz) { return ms ? fmt(ms / 1000, tz, { month: "short", day: "numeric", year: "numeric" }) : "—"; }
 function perimPopup(pr) {
   const typ = pr.type === "RX" ? "Prescribed fire" : pr.type === "CX" ? "Complex" : "Wildfire";
-  return `<b>${pr.name}</b><br>${typ}${pr.state ? " · " + pr.state.replace("US-", "") : ""}<br>
+  return `<b>${pr.name}</b><br>${typ}${pr.state ? " · " + String(pr.state).replace("US-", "") : ""}<br>
     ${pr.acres != null ? Math.round(pr.acres).toLocaleString() + " acres" : "Acres —"}${pr.contained != null ? " · " + pr.contained + "% contained" : ""}<br>
     Discovered: ${epochDate(pr.discovered, TZ.NM)}<br>Perimeter updated: ${pr.updated ? longT(pr.updated / 1000, TZ.NM) + "<br>(" + longT(pr.updated / 1000, TZ.AZ) + ")" : "—"}
     ${pr.id ? `<br><span class="small">${pr.id}</span>` : ""}`;
@@ -632,38 +787,38 @@ function addPerimeters(fc) {
       : { color: "#c0392b", weight: 2, fillColor: "#c0392b", fillOpacity: 0.35 } });
     lyr.bindPopup(perimPopup(f.properties));
     lyr.bindTooltip(f.properties.name, { sticky: true });
+    lyr.on("click", e => L.DomEvent.stopPropagation(e));
     (rx ? rxLayer : wfLayer).addLayer(lyr);
     rx ? nrx++ : nwf++;
   });
   if ($("oWF").checked) wfLayer.addTo(map);
   if ($("oRX").checked) rxLayer.addTo(map);
-  $("perimCount").textContent = `${nwf} wildfire and ${nrx} prescribed-fire perimeters in view area.`;
+  $("perimCount").textContent = `${nwf} wildfire and ${nrx} prescribed-fire perimeters in the map area.`;
 }
 function addGacc(fc) {
   S.gacc = fc;
   gaccLayer = L.geoJSON(fc, {
-    pane: "bounds", interactive: true,
-    style: f => f.properties.isSW
-      ? { color: "#111", weight: 3.5, fill: false }
-      : { color: "#4a4a4a", weight: 1.6, dashArray: "7 5", fill: false },
-    onEachFeature: (f, l) => l.bindTooltip(f.properties.name + (f.properties.abbr ? ` (${f.properties.abbr})` : ""), { sticky: true }),
+    pane: "bounds", interactive: false,
+    style: f => f.properties.isSW ? { color: "#111", weight: 3.5, fill: false } : { color: "#3a3a3a", weight: 1.6, dashArray: "7 5", fill: false },
   });
   if ($("oGacc").checked) gaccLayer.addTo(map);
   const sw = fc.features.find(f => f.properties.isSW);
   if (sw) map.fitBounds(L.geoJSON(sw).getBounds(), { padding: [10, 10] });
 }
 
-// ---------------------------------------------------------------- wiring
+// ================================================================= wiring
 function initUI() {
   const sel = $("layerSel");
   Object.entries(LAYERS).forEach(([key, v]) => sel.add(new Option(v.label, key)));
   const saved = recall("swsmoke.ui") || {};
   if (saved.layer && LAYERS[saved.layer]) S.layer = saved.layer;
   if (saved.primary) S.primary = saved.primary;
+  if (saved.opacity) { S.opacity = saved.opacity; $("opacity").value = saved.opacity; }
   sel.value = S.layer;
-  sel.onchange = () => { S.layer = sel.value; store("swsmoke.ui", { layer: S.layer, primary: S.primary }); renderGrid(); };
-  $("arrowsChk").onchange = () => { renderArrows(); renderLegend(); };
-  $("opacity").oninput = e => { S.opacity = +e.target.value; renderGrid(); };
+  const save = () => store("swsmoke.ui", { layer: S.layer, primary: S.primary, opacity: S.opacity });
+  sel.onchange = () => { S.layer = sel.value; save(); render(); };
+  $("arrowsChk").onchange = () => { smooth.redraw(); renderLegend(); };
+  $("opacity").oninput = e => { S.opacity = +e.target.value; smooth._fill && (smooth._fill.style.opacity = S.opacity); save(); };
   $("tSlider").oninput = e => setTime(+e.target.value);
   $("prev").onclick = () => setTime(S.t - 1);
   $("next").onclick = () => setTime(S.t + 1);
@@ -671,19 +826,19 @@ function initUI() {
   $("play").onclick = () => {
     if (S.playing) { clearInterval(S.playing); S.playing = null; $("play").textContent = "▶ Play"; return; }
     $("play").textContent = "❚❚ Pause";
-    S.playing = setInterval(() => setTime(S.t + 1 >= S.N ? 0 : S.t + 1), 700);
+    S.playing = setInterval(() => setTime(S.t + 1 >= S.N ? 0 : S.t + 1), 650);
   };
-  const setPrimary = k2 => { S.primary = k2; store("swsmoke.ui", { layer: S.layer, primary: S.primary }); recomputeLocal(); setTime(S.t); if (S.point != null) buildDetail(); };
+  const setPrimary = k2 => { S.primary = k2; save(); recomputeLocal(); setTime(S.t); if (S.point) buildDetail(); };
   $("tzNM").onclick = () => setPrimary("NM");
   $("tzAZ").onclick = () => setPrimary("AZ");
   applySavedCrit(); readCrit();
   ["cVent", "cPop", "cWind", "cGust", "cRhMin", "cRhMax", "cDay", "cH0", "cH1"].forEach(id =>
-    $(id).addEventListener("change", () => { readCrit(); renderGrid(); if (S.point != null) buildDetail(); }));
+    $(id).addEventListener("change", () => { readCrit(); render(); if (S.point) buildDetail(); }));
   $("oGacc").onchange = e => gaccLayer && (e.target.checked ? gaccLayer.addTo(map) : map.removeLayer(gaccLayer));
   $("oWF").onchange = e => e.target.checked ? wfLayer.addTo(map) : map.removeLayer(wfLayer);
   $("oRX").onchange = e => e.target.checked ? rxLayer.addTo(map) : map.removeLayer(rxLayer);
   document.addEventListener("keydown", e => {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    if (["INPUT", "SELECT"].includes(e.target.tagName)) return;
     if (e.key === "ArrowLeft") setTime(S.t - 1);
     if (e.key === "ArrowRight") setTime(S.t + 1);
   });
@@ -692,37 +847,32 @@ function initUI() {
   fit();
 }
 
-async function getJSON(name) {
-  const r = await fetch(DATA + name + "?v=" + Math.floor(Date.now() / 600000), { cache: "no-cache" });
-  if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
-  return r.json();
-}
-
 async function main() {
   initUI();
-  const [fc, gacc, perims, meta] = await Promise.allSettled(
-    ["forecast.json", "gacc.geojson", "perimeters.geojson", "meta.json"].map(getJSON));
+  const [man, gacc, perims, meta] = await Promise.allSettled(["manifest.json", "gacc.geojson", "perimeters.geojson", "meta.json"].map(getJSON));
   if (gacc.status === "fulfilled") addGacc(gacc.value);
   if (perims.status === "fulfilled") addPerimeters(perims.value);
-  if (fc.status !== "fulfilled") {
-    banner("<b>No forecast data yet.</b> In your GitHub repo open <b>Actions → Update data → Run workflow</b>, wait ~5 minutes, then reload this page.");
+  if (man.status !== "fulfilled") {
+    banner("<b>No forecast data yet.</b> In your GitHub repo open <b>Actions → Update data → Run workflow</b>, wait about 10 minutes, then reload this page.");
     $("updated").textContent = "waiting for first data run";
     return;
   }
-  S.fc = fc.value; S.times = S.fc.times; S.N = S.times.length;
+  S.M = man.value; S.times = S.M.times; S.N = S.times.length; S.NC = S.M.grid.nx * S.M.grid.ny;
+  S.dur = S.times.map((e, i) => i < S.N - 1 ? (S.times[i + 1] - e) / 3600 : (S.N > 1 ? (e - S.times[i - 1]) / 3600 : 1));
   $("tSlider").max = S.N - 1;
   recomputeLocal();
-  buildGrid();
-  map.setMaxBounds(L.latLngBounds([S.fc.grid.south - 4, S.fc.grid.west - 6], [S.fc.grid.north + 4, S.fc.grid.east + 6]));
-  // header freshness
-  const g = S.fc.generated, ageH = (Date.now() / 1000 - g) / 3600;
-  let up = `Forecast pulled ${longT(g, TZ.NM)} / ${shortT(g, TZ.AZ)} ${tzAbbr(g, TZ.AZ)} AZ`;
+  smooth.addTo(map);
+  const g = S.M.grid;
+  map.setMaxBounds(L.latLngBounds([g.north - g.ny * g.step - 4, g.west - 6], [g.north + 4, g.west + g.nx * g.step + 6]));
+  const cyc = S.M.cycle_epoch, ageH = (Date.now() / 1000 - cyc) / 3600;
+  let up = `NBM run ${fmt(cyc, "UTC", { hour: "2-digit", hourCycle: "h23" })}Z = ${longT(cyc, TZ.NM)} / ${shortT(cyc, TZ.AZ)} ${tzAbbr(cyc, TZ.AZ)} AZ`;
   if (meta.status === "fulfilled" && meta.value.sources?.perimeters?.updated) {
-    const pu = meta.value.sources.perimeters.updated;
-    up += ` · Perimeters ${shortT(pu, TZ.NM)} ${tzAbbr(pu, TZ.NM)}`;
+    const pu = meta.value.sources.perimeters.updated; up += ` · Perimeters ${shortT(pu, TZ.NM)} ${tzAbbr(pu, TZ.NM)}`;
   }
   $("updated").innerHTML = ageH > 12 ? `<span class="stale">⚠ ${up} (${Math.round(ageH)} h old — check the Actions tab)</span>` : up;
   setTime(nowIndex());
+  // Warm the rest of the fields in the background so hover and clicks are instant.
+  setTimeout(() => loadFields(allFields()).then(() => renderLegend()).catch(() => {}), 400);
 }
 main().catch(err => { console.error(err); banner("Error loading data: " + err.message); });
 </script>
